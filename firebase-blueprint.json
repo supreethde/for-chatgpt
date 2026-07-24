@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in Firestore",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "Restaurant supply inquiry submitted by partners",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "restaurantName": { "type": "string", "maxLength": 200 },
+        "contactNumber": { "type": "string", "maxLength": 50 },
+        "items": { "type": "string", "maxLength": 1000 },
+        "estimatedCost": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["pending", "contacted", "fulfilled"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "restaurantName", "contactNumber", "items"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents keyed by Firebase auth UID"
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": "Inquiry",
+      "description": "Restaurant inquiries collection"
+    }
+  }
+}

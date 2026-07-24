@@ -1,0 +1,8 @@
+{
+  "name": "Remix: The Soil Theory",
+  "description": "Chemical-free, traceable produce supplier website for restaurants in Bengaluru, Karnataka.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
