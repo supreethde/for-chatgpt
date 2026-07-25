@@ -60,13 +60,15 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:"DM Sans",san
 .nav-cta{border:1px solid var(--ink);padding:11px 15px}
 .nav-cta span,.button span{margin-left:13px}
 /* Navigation Cart & Profile Styles */
-.nav-cart-wrapper, .nav-profile-wrapper { position: relative; display: inline-flex; }
-.nav-icon-btn { display: inline-flex; align-items: center; gap: 7px; background: transparent; border: 1px solid var(--ink); color: var(--ink); padding: 9px 13px; font-family: "DM Sans", sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s ease; }
-.nav-icon-btn:hover { background: rgba(24, 59, 43, 0.08); }
-.cart-badge { background: var(--lime); color: var(--ink); border-radius: 10px; padding: 1px 7px; font-family: "DM Mono", monospace; font-size: 11px; font-weight: 700; margin-left: 2px; }
-.profile-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; display: inline-grid; place-items: center; font-family: "DM Mono", monospace; font-size: 10px; font-weight: 700; }
-.profile-name { max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chevron-icon { transition: transform 0.2s ease; }
+.nav-cart-wrapper, .nav-profile-wrapper { position: relative; display: inline-flex; align-items: center; }
+.nav-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: transparent; border: 1px solid var(--ink); color: var(--ink); padding: 0; cursor: pointer; transition: all 0.2s ease; position: relative; flex-shrink: 0; }
+.nav-icon-btn:hover { background: rgba(24, 59, 43, 0.08); transform: translateY(-1px); }
+.nav-profile-btn { background: var(--ink); color: #ffffff; border-color: var(--ink); }
+.nav-profile-btn:hover { background: #132f22; color: #ffffff; }
+.cart-badge { position: absolute; top: -3px; right: -3px; background: var(--lime); color: var(--ink); border-radius: 10px; padding: 1px 6px; font-family: "DM Mono", monospace; font-size: 10px; font-weight: 700; border: 1px solid var(--ink); }
+.profile-avatar { width: 100%; height: 100%; border-radius: 50%; display: inline-grid; place-items: center; font-family: "DM Mono", monospace; font-size: 13px; font-weight: 700; color: #ffffff; }
+.profile-name { display: none; }
+.chevron-icon { display: none; }
 .nav-icon-btn[aria-expanded="true"] .chevron-icon { transform: rotate(180deg); }
 .cart-dropdown, .profile-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: 320px; background: var(--paper); border: 1px solid var(--ink); box-shadow: 6px 8px 0 rgba(24, 59, 43, 0.15); z-index: 300; opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease; padding: 0; text-align: left; }
 .cart-dropdown.is-open, .profile-dropdown.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -108,7 +110,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:"DM Sans",san
 .hero-proof div{display:grid;gap:5px}
 .hero-proof strong{font-family:"Playfair Display",serif;font-size:23px}
 .hero-proof span{font-size:11px;line-height:1.3;color:#4c6254}
-.hero-art{min-height:610px;background:#a7c291;position:relative;overflow:hidden}
+.hero-art{min-height:610px;background:#dfd4c3;position:relative;overflow:hidden;display:flex;align-items:stretch;justify-content:stretch}
 .sun{background:#f7ca63;width:260px;height:260px;border-radius:50%;position:absolute;top:82px;right:13%}
 .arc{position:absolute;width:590px;height:590px;border:1px solid rgba(24,59,43,.28);border-radius:50%;right:-162px;bottom:-260px}
 .arc-two{width:460px;height:460px;right:-92px;bottom:-201px}
@@ -581,13 +583,12 @@ footer .wordmark{font-size:12px}footer .wordmark strong{font-size:13px}footer .w
 
         <!-- Cart Section -->
         <div class="nav-cart-wrapper">
-          <button type="button" class="nav-icon-btn nav-cart-btn" id="nav-cart-trigger" aria-label="Open Cart" aria-expanded="false">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button type="button" class="nav-icon-btn nav-cart-btn" id="nav-cart-trigger" aria-label="Open Cart" aria-expanded="false" title="View Cart">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="8" cy="21" r="1"/>
               <circle cx="19" cy="21" r="1"/>
               <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
             </svg>
-            <span>Cart</span>
             <span class="cart-badge" id="cart-count-badge">3</span>
           </button>
           <div class="cart-dropdown" id="cart-dropdown">
@@ -630,12 +631,8 @@ footer .wordmark{font-size:12px}footer .wordmark strong{font-size:13px}footer .w
 
         <!-- User Profile Section -->
         <div class="nav-profile-wrapper">
-          <button type="button" class="nav-icon-btn nav-profile-btn" id="nav-profile-trigger" aria-label="User Menu" aria-expanded="false">
+          <button type="button" class="nav-icon-btn nav-profile-btn" id="nav-profile-trigger" aria-label="User Menu" aria-expanded="false" title="Chef Rahul Sharma">
             <span class="profile-avatar">ST</span>
-            <span class="profile-name">Chef Rahul</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
           </button>
           <div class="profile-dropdown" id="profile-dropdown">
             <div class="profile-dropdown-header">
@@ -775,13 +772,42 @@ footer .wordmark{font-size:12px}footer .wordmark strong{font-size:13px}footer .w
           </div>
         </div>
         <div class="hero-art reveal">
-          <div class="sun"></div>
-          <div class="arc arc-one"></div><div class="arc arc-two"></div>
-          <div class="produce tomato"><span></span></div>
-          <div class="produce carrot"><span></span></div>
-          <div class="produce leaf leaf-one"></div><div class="produce leaf leaf-two"></div>
-          <div class="hero-badge"><span class="badge-check">✓</span><span>Tested<br />every week</span></div>
-          <p class="field-label">GROWN WITH CARE<br />IN KARNATAKA</p>
+          <svg viewBox="0 0 600 720" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;display:block;" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background canvas -->
+            <rect width="600" height="720" fill="#dfd4c3" />
+
+            <!-- Terracotta Block (bottom-left area and base) -->
+            <path d="M 0 420 L 251 420 L 251 660 L 600 660 L 600 720 L 0 720 Z" fill="#bd5c38" />
+
+            <!-- Forest Green Block (top-right arched shape) -->
+            <path d="M 250 270 Q 250 130 390 130 L 600 130 L 600 660 L 250 660 Z" fill="#1d4838" />
+
+            <!-- Top Left Typography -->
+            <text x="32" y="44" font-family="'DM Mono', monospace" font-size="12" font-weight="600" fill="#1d4838" letter-spacing="1.8">ROOTED IN CARE</text>
+            <text x="32" y="64" font-family="'DM Mono', monospace" font-size="12" font-weight="600" fill="#1d4838" letter-spacing="1.8">MADE FOR GROWTH</text>
+
+            <!-- Leaf 1: Top leaf overlapping canvas & green arch -->
+            <g transform="translate(283, 270) rotate(-22)">
+              <path d="M 0,-95 C 48,-45 48,45 0,95 C -48,45 -48,-45 0,-95 Z" fill="#f0e8d9" />
+            </g>
+
+            <!-- Leaf 2: Middle-right leaf inside green shape -->
+            <g transform="translate(428, 355) rotate(-52)">
+              <path d="M 0,-110 C 52,-50 52,50 0,110 C -52,50 -52,-50 0,-110 Z" fill="#f0e8d9" />
+            </g>
+
+            <!-- Leaf 3: Bottom-left leaf overlapping terracotta & canvas -->
+            <g transform="translate(222, 510) rotate(-22)">
+              <path d="M 0,-115 C 55,-55 55,55 0,115 C -55,55 -55,-55 0,-115 Z" fill="#f0e8d9" />
+            </g>
+
+            <!-- Bottom Right Typography -->
+            <text x="568" y="688" text-anchor="end" font-family="'DM Mono', monospace" font-size="12" font-weight="600" fill="#f0e8d9" letter-spacing="1.8">THE SOIL THEORY</text>
+            <text x="568" y="708" text-anchor="end" font-family="'DM Mono', monospace" font-size="12" font-weight="600" fill="#f0e8d9" letter-spacing="1.8">EST. WITH INTENTION</text>
+
+            <!-- Framing stroke -->
+            <rect x="18" y="18" width="564" height="684" fill="none" stroke="rgba(29, 72, 56, 0.15)" stroke-width="1" />
+          </svg>
         </div>
       </section>
 
