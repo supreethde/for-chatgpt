@@ -30,19 +30,26 @@ export const ProductList: React.FC<ProductListProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'All'>('All');
 
-  // Filter logic
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.regionalNameKannada && product.regionalNameKannada.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (product.regionalNameHindi && product.regionalNameHindi.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Filter and Sort logic
+  const filteredProducts = products
+    .filter((product) => {
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.scientificName && product.scientificName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (product.regionalNameKannada && product.regionalNameKannada.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (product.regionalNameHindi && product.regionalNameHindi.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesCategory =
-      selectedCategory === 'All' || product.category === selectedCategory;
+      const matchesCategory =
+        selectedCategory === 'All' || product.category === selectedCategory;
 
-    return matchesSearch && matchesCategory;
-  });
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      const orderA = typeof a.displayOrder === 'number' ? a.displayOrder : 100;
+      const orderB = typeof b.displayOrder === 'number' ? b.displayOrder : 100;
+      return orderA - orderB;
+    });
 
   // Calculate lowest price for a product
   const getLowestPrice = (product: CatalogProduct): number => {
@@ -164,6 +171,7 @@ export const ProductList: React.FC<ProductListProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-stone-50 border-b border-stone-200 text-[11px] font-mono font-semibold text-stone-500 uppercase tracking-wider">
+                  <th className="py-3.5 px-4 w-16 text-center">Order</th>
                   <th className="py-3.5 px-4">Product</th>
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4">Lowest Price</th>
@@ -182,6 +190,11 @@ export const ProductList: React.FC<ProductListProps> = ({
                       key={product.id}
                       className="hover:bg-stone-50/70 transition-colors group"
                     >
+                      {/* Order */}
+                      <td className="py-3 px-4 text-center font-mono font-bold text-stone-500 text-xs">
+                        #{product.displayOrder ?? 100}
+                      </td>
+
                       {/* Product Thumbnail & Title */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -200,6 +213,11 @@ export const ProductList: React.FC<ProductListProps> = ({
                             <p className="font-semibold text-stone-900 group-hover:text-emerald-900 transition-colors">
                               {product.name}
                             </p>
+                            {product.scientificName && (
+                              <p className="text-[11px] text-emerald-800 italic font-serif">
+                                {product.scientificName}
+                              </p>
+                            )}
                             <p className="text-[11px] text-stone-400 font-mono">
                               /{product.slug}
                             </p>

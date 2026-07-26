@@ -30,6 +30,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   const [name, setName] = useState(product?.name || '');
   const [slug, setSlug] = useState(product?.slug || '');
   const [category, setCategory] = useState<ProductCategory>(product?.category || 'Vegetables');
+  const [scientificName, setScientificName] = useState(product?.scientificName || '');
+  const [displayOrder, setDisplayOrder] = useState<number>(product?.displayOrder ?? 100);
   const [shortIntro, setShortIntro] = useState(product?.shortIntro || '');
   
   // 4 key highlights
@@ -231,6 +233,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
 
     if (!name.trim()) newErrors.name = 'Product name is required';
     if (!slug.trim()) newErrors.slug = 'URL slug is required';
+    if (displayOrder === undefined || displayOrder === null || isNaN(displayOrder)) {
+      newErrors.displayOrder = 'Display order is required and must be a valid number';
+    }
     
     if (!shortIntro.trim()) {
       newErrors.shortIntro = 'Short introduction is required';
@@ -281,6 +286,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       name: name.trim(),
       slug: slug.trim(),
       category,
+      scientificName: scientificName.trim() || undefined,
+      displayOrder: Number(displayOrder) || 100,
       shortIntro: shortIntro.trim(),
       highlights: highlights.map((h) => h.trim()),
       description: description.trim(),
@@ -422,6 +429,40 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
               className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-stone-50"
             />
             {errors.slug && <p className="text-[11px] text-red-600 mt-1">{errors.slug}</p>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Scientific Name (Optional) */}
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Scientific Name <span className="text-stone-400 font-normal">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={scientificName}
+                onChange={(e) => setScientificName(e.target.value)}
+                placeholder="e.g. Lactuca sativa var. capitata"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+              />
+            </div>
+
+            {/* Display Order (Required number) */}
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Display Order <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                value={displayOrder}
+                onChange={(e) => setDisplayOrder(parseInt(e.target.value, 10) || 0)}
+                placeholder="100"
+                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+              />
+              <p className="text-[10px] text-stone-500 mt-0.5">
+                Sort priority in catalogue (lower numbers appear first, default 100)
+              </p>
+              {errors.displayOrder && <p className="text-[11px] text-red-600 mt-1">{errors.displayOrder}</p>}
+            </div>
           </div>
 
           {/* Active / Inactive Status Toggle */}

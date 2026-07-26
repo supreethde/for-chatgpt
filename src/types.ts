@@ -21,6 +21,8 @@ export interface CatalogProduct {
   name: string;
   slug: string;
   category: ProductCategory;
+  scientificName?: string;
+  displayOrder?: number;
   shortIntro: string; // Concise max 2-sentence intro
   highlights: string[]; // Array of exactly 4 key highlights
   description: string; // ~80-120 words short description
