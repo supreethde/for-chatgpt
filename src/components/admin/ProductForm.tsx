@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CatalogProduct, ProductCategory, ProductVariant, StockStatus } from '../../types';
-import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../lib/firebase';
 
 interface ProductFormProps {
   product?: CatalogProduct | null; // null if adding new product
@@ -46,10 +48,17 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   const [regionalNameKannada, setRegionalNameKannada] = useState(product?.regionalNameKannada || '');
   const [regionalNameHindi, setRegionalNameHindi] = useState(product?.regionalNameHindi || '');
   
-  // Up to 5 image URLs
+  // Up to 5 image URLs from Firebase Storage
   const [images, setImages] = useState<string[]>(
-    product?.images && product.images.length > 0 ? [...product.images] : ['']
+    product?.images && product.images.length > 0 ? [...product.images] : []
   );
+
+  // Upload state
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Pack-size variants
   const [variants, setVariants] = useState<ProductVariant[]>(
@@ -103,24 +112,84 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     setHighlights(updated);
   };
 
-  const handleAddImageUrl = () => {
-    if (images.length < 5) {
-      setImages([...images, '']);
-    }
-  };
+  // Image Upload Handler using Firebase Storage
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    if (files.length === 0) return;
 
-  const handleImageChange = (index: number, value: string) => {
-    const updated = [...images];
-    updated[index] = value;
-    setImages(updated);
+    const maxAllowed = 5;
+    const currentCount = images.length;
+    const availableSlots = maxAllowed - currentCount;
+
+    if (availableSlots <= 0) {
+      setUploadError('Maximum limit of 5 images per product reached.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    const selectedFiles = files.slice(0, availableSlots);
+    setUploading(true);
+    setUploadError(null);
+    setUploadProgress(0);
+
+    const newUploadedUrls: string[] = [];
+
+    try {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        setUploadStatusText(`Uploading image ${i + 1} of ${selectedFiles.length}...`);
+
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `products/${Date.now()}_${cleanName}`;
+        const storageRef = ref(storage, storagePath);
+
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const filePercent = snapshot.totalBytes > 0 ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+              const overallPercent = Math.round(
+                ((i + filePercent) / selectedFiles.length) * 100
+              );
+              setUploadProgress(overallPercent);
+            },
+            (error) => {
+              console.error('Firebase storage upload error:', error);
+              reject(error);
+            },
+            async () => {
+              try {
+                const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                newUploadedUrls.push(downloadUrl);
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            }
+          );
+        });
+      }
+
+      setImages((prev) => [...prev, ...newUploadedUrls]);
+      setUploadProgress(100);
+      setUploadStatusText('Upload complete!');
+      setTimeout(() => {
+        setUploading(false);
+        setUploadStatusText('');
+      }, 800);
+    } catch (err: any) {
+      console.error('Failed to upload image(s):', err);
+      setUploadError(err?.message || 'Failed to upload image to Firebase Storage.');
+      setUploading(false);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleRemoveImage = (index: number) => {
-    if (images.length === 1) {
-      setImages(['']);
-    } else {
-      setImages(images.filter((_, i) => i !== index));
-    }
+    setImages(images.filter((_, i) => i !== index));
   };
 
   // Variant handlers
@@ -177,9 +246,11 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       newErrors.description = 'Product description is required';
     }
 
-    const validImages = images.filter((img) => img.trim().length > 0);
-    if (validImages.length === 0) {
-      newErrors.images = 'At least 1 product image URL is required';
+    if (images.length === 0) {
+      newErrors.images = 'At least 1 product image is required. Please upload an image.';
+    }
+    if (uploading) {
+      newErrors.images = 'Please wait for image upload to complete.';
     }
 
     if (variants.length === 0) {
@@ -492,60 +563,129 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
         {/* Product Images */}
         <div className="space-y-4">
           <div className="flex justify-between items-center pb-2 border-b border-stone-100">
-            <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
-              5. Product Images (Up to 5 URLs)
-            </h3>
-            {images.length < 5 && (
+            <div>
+              <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
+                5. Product Images (Up to 5)
+              </h3>
+              <p className="text-[11px] text-stone-500">
+                Upload images from your computer directly to Firebase Storage ({images.length}/5 uploaded)
+              </p>
+            </div>
+
+            {/* Hidden File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/png, image/jpeg, image/webp, image/gif"
+              multiple
+              className="hidden"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={images.length >= 5 || uploading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              {uploading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-800" />
+              ) : (
+                <Upload className="w-4 h-4 text-emerald-800" />
+              )}
+              {uploading ? 'Uploading...' : 'Upload Images'}
+            </button>
+          </div>
+
+          {/* Upload Progress Bar */}
+          {uploading && (
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-2">
+              <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                  {uploadStatusText}
+                </span>
+                <span className="font-mono text-emerald-800">{uploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-stone-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-600 transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload Error Banner */}
+          {uploadError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between text-xs text-red-800">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <p>{uploadError}</p>
+              </div>
               <button
                 type="button"
-                onClick={handleAddImageUrl}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                onClick={() => setUploadError(null)}
+                className="text-stone-500 hover:text-stone-800 font-bold text-[11px]"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Image URL
+                Dismiss
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="space-y-3">
-            {images.map((imgUrl, idx) => (
-              <div key={idx} className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-stone-100 border border-stone-200 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                  {imgUrl ? (
-                    <img
-                      src={imgUrl}
-                      alt={`Preview ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <ImageIcon className="w-5 h-5 text-stone-400" />
-                  )}
-                </div>
-
-                <div className="flex-1">
-                  <input
-                    type="url"
-                    value={imgUrl}
-                    onChange={(e) => handleImageChange(idx, e.target.value)}
-                    placeholder={`Image URL ${idx + 1} (HTTPS link to JPEG, PNG, or WebP)`}
-                    className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(idx)}
-                  className="p-1.5 text-stone-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                  title="Remove image URL"
+          {/* Uploaded Image Thumbnails Grid */}
+          {images.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {images.map((imgUrl, idx) => (
+                <div
+                  key={idx}
+                  className="group relative bg-stone-100 border border-stone-200 rounded-xl overflow-hidden aspect-square flex items-center justify-center shadow-xs"
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                  <img
+                    src={imgUrl}
+                    alt={`Product Image ${idx + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+
+                  {/* Badge */}
+                  <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-stone-900/80 text-white text-[10px] font-mono rounded backdrop-blur-xs">
+                    {idx === 0 ? 'Main' : `#${idx + 1}`}
+                  </span>
+
+                  {/* Delete Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1.5 right-1.5 p-1 bg-red-600/90 text-white hover:bg-red-700 rounded-lg opacity-90 group-hover:opacity-100 transition-all shadow-xs cursor-pointer"
+                    title="Delete uploaded image"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !uploading && (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-stone-300 rounded-xl p-8 text-center hover:border-emerald-600 hover:bg-emerald-50/20 transition-colors cursor-pointer group space-y-2"
+              >
+                <div className="w-10 h-10 rounded-full bg-stone-100 group-hover:bg-emerald-100 text-stone-500 group-hover:text-emerald-800 flex items-center justify-center mx-auto transition-colors">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-stone-800 group-hover:text-emerald-900">
+                    Click to upload product images
+                  </p>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    PNG, JPG, or WebP up to 5MB (Max 5 images per product)
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-          {errors.images && <p className="text-[11px] text-red-600">{errors.images}</p>}
+            )
+          )}
+
+          {errors.images && <p className="text-[11px] text-red-600 font-medium">{errors.images}</p>}
         </div>
 
         {/* Pack-size Variants */}
