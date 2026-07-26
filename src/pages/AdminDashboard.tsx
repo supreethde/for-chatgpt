@@ -44,9 +44,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Load products from Firestore
   const loadProducts = async () => {
+    if (authLoading || !currentUser) {
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
+      // Ensure a fresh authenticated token is available before querying Firestore
+      await currentUser.getIdToken(true);
+
       const fetched = await fetchProductsFromFirestore();
       setProducts(fetched);
     } catch (err: any) {
@@ -67,10 +74,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   useEffect(() => {
-    if (currentUser) {
+    if (!authLoading && currentUser) {
       loadProducts();
     }
-  }, [currentUser]);
+  }, [currentUser, authLoading]);
 
   useEffect(() => {
     if (!authLoading && !currentUser && onNavigate) {
@@ -83,7 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <div className="w-8 h-8 border-2 border-stone-800 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-stone-600 font-medium">Verifying admin authorization...</p>
+          <p className="text-xs text-stone-600 font-medium font-mono">Restoring admin session & authentication...</p>
         </div>
       </div>
     );
@@ -109,9 +116,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // CRUD Actions
   const handleSaveProduct = async (product: CatalogProduct) => {
+    if (!currentUser) return;
     setActionError(null);
     setSubmitting(true);
     try {
+      await currentUser.getIdToken(true);
       if (viewMode === 'edit') {
         await updateProductInFirestore(product, editingProduct?.slug);
       } else {
@@ -138,10 +147,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleConfirmDelete = async () => {
-    if (!deletingProduct) return;
+    if (!deletingProduct || !currentUser) return;
     setActionError(null);
     setSubmitting(true);
     try {
+      await currentUser.getIdToken(true);
       await deleteProductFromFirestore(deletingProduct.slug);
       setDeletingProduct(null);
       await loadProducts();
@@ -164,7 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleToggleActive = async (productId: string) => {
     const target = products.find((p) => p.id === productId || p.slug === productId);
-    if (!target) return;
+    if (!target || !currentUser) return;
     
     const newStatus = !target.isActive;
     setActionError(null);
@@ -175,6 +185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
 
     try {
+      await currentUser.getIdToken(true);
       await toggleProductActiveInFirestore(target.slug, newStatus);
     } catch (err: any) {
       console.error('Toggle active error:', err);
@@ -197,9 +208,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Optional helper to seed initial products if Firestore is empty
   const handleSeedInitialProducts = async () => {
+    if (!currentUser) return;
     setSubmitting(true);
     setActionError(null);
     try {
+      await currentUser.getIdToken(true);
       for (const prod of INITIAL_PRODUCTS) {
         await addProductToFirestore(prod);
       }

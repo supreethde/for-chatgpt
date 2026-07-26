@@ -32,6 +32,8 @@ function AdminApp() {
   if (user) {
     return (
       <AdminDashboard
+        user={user}
+        authLoading={loading}
         onLogout={() => {
           auth.signOut();
         }}
