@@ -15,11 +15,14 @@ import {
   MapPin,
   Calendar,
   Phone,
-  Sparkles
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { auth, googleAuthProvider } from './lib/firebase.ts';
+import { auth, googleAuthProvider } from './lib/firebase';
+import { AdminLogin } from './pages/AdminLogin';
+import { AdminDashboard } from './pages/AdminDashboard';
 
 // Watercolor banner images
 import carrotsImg from './assets/images/1.jpg';
@@ -103,9 +106,66 @@ const bannerItems = [
   }
 ];
 
+const getNormalizedPath = (): string => {
+  let path = window.location.pathname || '/';
+
+  if (window.location.hash) {
+    const hash = window.location.hash.replace(/^#/, '');
+    if (hash.startsWith('/')) {
+      path = hash;
+    } else if (hash.length > 0) {
+      path = '/' + hash;
+    }
+  }
+
+  path = path.split('?')[0].split('#')[0];
+
+  if (!path.startsWith('/')) {
+    path = '/' + path;
+  }
+
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.slice(0, -1);
+  }
+
+  return path.toLowerCase();
+};
+
 export default function App() {
+  const [currentPath, setCurrentPath] = useState<string>(getNormalizedPath());
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(getNormalizedPath());
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+
+    handleLocationChange();
+
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, []);
+
+  const navigateTo = (path: string) => {
+    try {
+      window.history.pushState({}, '', path);
+    } catch (e) {
+      console.warn('pushState error:', e);
+    }
+    const cleanPath = path.toLowerCase().split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+    const norm = getNormalizedPath();
+    if (norm === '/' && cleanPath !== '/') {
+      setCurrentPath(cleanPath);
+    } else {
+      setCurrentPath(norm);
+    }
+  };
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
   
   // Data State
@@ -296,13 +356,36 @@ export default function App() {
     }
   };
 
+  const normalizedPath = currentPath;
+
+  if (normalizedPath === '/admin/login') {
+    return <AdminLogin onNavigate={navigateTo} />;
+  }
+
+  if (normalizedPath === '/admin') {
+    return <AdminDashboard user={user} authLoading={loading} onNavigate={navigateTo} />;
+  }
+
   return (
     <div className="min-h-screen bg-brand-paper flex flex-col font-sans selection:bg-brand-lime selection:text-brand-ink">
       
       {/* Top Banner Announcement */}
-      <div className="bg-brand-ink text-white text-xs py-2 text-center font-mono tracking-wider flex items-center justify-center gap-2">
+      <div className="bg-brand-ink text-white text-xs py-2 px-6 font-mono tracking-wider flex items-center justify-center gap-2">
         <span className="w-1.5 h-1.5 bg-brand-lime rounded-full animate-pulse"></span>
         WEEKLY TOXICOLOGY & PESTICIDE LAB REPORTS UPDATED • JULY 2026
+      </div>
+
+      {/* Temporary Open Admin Login Button directly below top announcement bar */}
+      <div className="bg-emerald-800 text-white p-4 text-center border-b-2 border-emerald-950 shadow-md">
+        <button
+          type="button"
+          onClick={() => setCurrentPath('/admin/login')}
+          className="bg-brand-lime text-brand-ink hover:bg-white text-lg font-black px-8 py-3.5 rounded-md shadow-xl cursor-pointer tracking-wider uppercase transition-all transform hover:scale-105 inline-flex items-center justify-center gap-2"
+          id="open-admin-login-main-btn"
+        >
+          <Lock className="w-5 h-5" />
+          OPEN ADMIN LOGIN
+        </button>
       </div>
 
       {/* Main Elegant Header */}
@@ -1098,8 +1181,17 @@ export default function App() {
             <p className="text-xs text-brand-cream/80">
               © {new Date().getFullYear()} The Soil Theory Agriculture LLP. All Rights Reserved.
             </p>
-            <p className="text-[10px] text-brand-cream/60 font-mono">
-              Bengaluru Office: Indiranagar Stage 2, Bangalore, KA, India. Hello@soiltheory.in
+            <p className="text-[10px] text-brand-cream/60 font-mono flex items-center justify-center md:justify-end gap-2">
+              <span>Bengaluru Office: Indiranagar Stage 2, Bangalore, KA, India. Hello@soiltheory.in</span>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => navigateTo('/admin/login')}
+                className="underline hover:text-brand-lime transition-colors cursor-pointer"
+                id="footer-admin-link"
+              >
+                Admin Portal
+              </button>
             </p>
           </div>
         </div>
