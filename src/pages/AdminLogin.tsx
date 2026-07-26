@@ -4,10 +4,12 @@ import { auth } from '../lib/firebase';
 import { Lock, Mail, Loader2, AlertCircle, Sprout, ArrowLeft } from 'lucide-react';
 
 interface AdminLoginProps {
-  onNavigate: (path: string) => void;
+  onNavigate?: (path: string) => void;
+  onSuccess?: () => void;
+  onBackToSite?: () => void;
 }
 
-export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
+export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate, onSuccess, onBackToSite }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,8 +22,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Successful login -> navigate to /admin
-      onNavigate('/admin');
+      if (onSuccess) {
+        onSuccess();
+      }
+      if (onNavigate) {
+        onNavigate('/admin');
+      }
     } catch (err: any) {
       console.error('Admin login error:', err);
       let message = 'Failed to sign in. Please check your credentials and try again.';
@@ -46,7 +52,15 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
         {/* Back link */}
         <button
           type="button"
-          onClick={() => onNavigate('/')}
+          onClick={() => {
+            if (onBackToSite) {
+              onBackToSite();
+            } else if (onNavigate) {
+              onNavigate('/');
+            } else {
+              window.location.href = '/';
+            }
+          }}
           className="inline-flex items-center gap-1.5 text-xs text-stone-600 hover:text-stone-900 mb-6 font-medium transition-colors"
           id="back-to-store-btn"
         >
