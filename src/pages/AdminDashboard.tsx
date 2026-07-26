@@ -4,18 +4,26 @@ import { auth } from '../lib/firebase';
 import { LogOut, ShieldCheck, ArrowLeft } from 'lucide-react';
 
 interface AdminDashboardProps {
-  user: User | null;
-  authLoading: boolean;
-  onNavigate: (path: string) => void;
+  user?: User | null;
+  authLoading?: boolean;
+  onNavigate?: (path: string) => void;
+  onLogout?: () => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, authLoading, onNavigate }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  user: propUser,
+  authLoading = false,
+  onNavigate,
+  onLogout,
+}) => {
+  const currentUser = propUser || auth.currentUser;
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authLoading && !currentUser && onNavigate) {
       // Unauthenticated user -> redirect to /admin/login
       onNavigate('/admin/login');
     }
-  }, [user, authLoading, onNavigate]);
+  }, [currentUser, authLoading, onNavigate]);
 
   if (authLoading) {
     return (
@@ -28,14 +36,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, authLoadin
     );
   }
 
-  if (!user) {
-    return null; // Will redirect via useEffect
+  if (!currentUser) {
+    return null;
   }
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      onNavigate('/admin/login');
+      if (onLogout) {
+        onLogout();
+      }
+      if (onNavigate) {
+        onNavigate('/admin/login');
+      }
     } catch (err) {
       console.error('Sign out failed:', err);
     }
@@ -48,9 +61,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, authLoadin
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => onNavigate('/')}
-            className="p-1.5 text-stone-500 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors"
+            onClick={() => {
+              if (onNavigate) {
+                onNavigate('/');
+              } else {
+                window.location.href = '/';
+              }
+            }}
+            className="p-1.5 text-stone-500 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
             title="Return to Main Store"
+            id="admin-dashboard-back-btn"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -59,14 +79,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, authLoadin
 
         <div className="flex items-center gap-4">
           <span className="text-xs text-stone-600 font-mono bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200">
-            {user.email}
+            {currentUser.email || 'Admin User'}
           </span>
           <button
             type="button"
+            id="admin-sign-out-btn"
             onClick={handleSignOut}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-stone-700 hover:text-red-700 bg-stone-100 hover:bg-red-50 rounded-lg border border-stone-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-stone-700 hover:text-red-700 bg-stone-100 hover:bg-red-50 rounded-lg border border-stone-200 transition-colors cursor-pointer"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-3.5 h-3.5 text-red-600" />
             Sign Out
           </button>
         </div>
