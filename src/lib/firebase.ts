@@ -5,7 +5,7 @@ import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, 'ai-studio-079b0c89-47e0-457f-8055-81794a58a547');
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleAuthProvider = new GoogleAuthProvider();
