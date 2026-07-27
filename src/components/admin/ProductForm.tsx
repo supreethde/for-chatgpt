@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_TIERS, SourcingTier } from '../../types';
 import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
+import { uploadProductImage, validateImageFile } from '../../lib/storage-utils';
 
 interface ProductFormProps {
   product?: CatalogProduct | null; // null if adding new product
@@ -127,7 +128,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     setHighlights(updated);
   };
 
-  // Image Upload Handler using Server Admin API (/api/admin/upload)
+  // Image Upload Handler using Direct Firebase Storage Web SDK
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
     if (files.length === 0) return;
@@ -150,65 +151,39 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     }
 
     const selectedFiles = files.slice(0, availableSlots);
+
+    // Validate selected files
+    for (const file of selectedFiles) {
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setUploadError(validation.error || 'Invalid file format or size.');
+        if (e.target) e.target.value = '';
+        return;
+      }
+    }
+
     setUploading(true);
     setUploadError(null);
     setUploadProgress(0);
 
     const newUploadedUrls: string[] = [];
+    const currentSlug = slug.trim() || generateSlug(name) || 'product';
 
     try {
-      const idToken = await currentUser.getIdToken();
-
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         setUploadStatusText(`Uploading image ${i + 1} of ${selectedFiles.length}...`);
 
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', '/api/admin/upload');
-          xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
-
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const filePercent = event.loaded / event.total;
-              const overallPercent = Math.round(
-                ((i + filePercent) / selectedFiles.length) * 100
-              );
-              setUploadProgress(overallPercent);
-            }
-          };
-
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const data = JSON.parse(xhr.responseText);
-                if (data.downloadURL) {
-                  newUploadedUrls.push(data.downloadURL);
-                  resolve();
-                } else {
-                  reject(new Error('Invalid response from upload server.'));
-                }
-              } catch {
-                reject(new Error('Failed to parse server response.'));
-              }
-            } else {
-              try {
-                const errData = JSON.parse(xhr.responseText);
-                reject(new Error(errData.error || `Upload failed with status ${xhr.status}`));
-              } catch {
-                reject(new Error(`Upload failed with status ${xhr.status}`));
-              }
-            }
-          };
-
-          xhr.onerror = () => {
-            reject(new Error('Network error occurred during image upload.'));
-          };
-
-          const formData = new FormData();
-          formData.append('file', file);
-          xhr.send(formData);
+        const result = await uploadProductImage(file, currentSlug, (filePercent) => {
+          const overallPercent = Math.round(
+            ((i + filePercent / 100) / selectedFiles.length) * 100
+          );
+          setUploadProgress(overallPercent);
         });
+
+        if (result.url) {
+          newUploadedUrls.push(result.url);
+        }
       }
 
       setImages((prev) => [...prev, ...newUploadedUrls]);
@@ -809,7 +784,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
                     Click to upload product images
                   </p>
                   <p className="text-[11px] text-stone-500 mt-0.5">
-                    PNG, JPG, or WebP up to 5MB (Max 5 images per product)
+                    PNG, JPG, WebP, or GIF up to 5MB (Max 5 images per product)
                   </p>
                 </div>
               </div>

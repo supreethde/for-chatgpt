@@ -1,11 +1,13 @@
 import { 
   ref, 
+  uploadBytesResumable, 
+  getDownloadURL, 
   deleteObject 
 } from 'firebase/storage';
 import { storage, auth } from './firebase';
 import { UploadProgressCallback, UploadResult } from '../types';
 
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 export interface FileValidationResult {
@@ -14,13 +16,18 @@ export interface FileValidationResult {
 }
 
 /**
- * Validates file type and size.
+ * Validates file type (JPG, JPEG, PNG, WebP, GIF) and size (<= 5MB).
  */
 export function validateImageFile(file: File): FileValidationResult {
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+  const fileType = file.type?.toLowerCase();
+  const validMime = ALLOWED_IMAGE_TYPES.includes(fileType);
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  const validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '');
+
+  if (!validMime && !validExt) {
     return {
       valid: false,
-      error: `Unsupported file format (${file.type || 'unknown'}). Only JPEG, PNG, and WebP images are allowed.`,
+      error: `Unsupported file format (${file.type || ext || 'unknown'}). Only JPG, JPEG, PNG, WebP, and GIF images are allowed.`,
     };
   }
 
@@ -35,22 +42,32 @@ export function validateImageFile(file: File): FileValidationResult {
   return { valid: true };
 }
 
-/**
- * Generates a clean, unique file path under products/{productId}/
- */
-export function generateStoragePath(productId: string, filename: string): string {
-  const sanitizedFilename = filename.toLowerCase().replace(/[^a-z0-9._-]/g, '_');
-  const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const cleanProductId = productId || 'temp';
-  return `products/${cleanProductId}/${uniqueId}_${sanitizedFilename}`;
+export function sanitizeFilename(filename: string): string {
+  return filename
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9.-]/g, '_')
+    .replace(/_+/g, '_');
 }
 
 /**
- * Uploads a validated image file using the server Admin upload API endpoint
+ * Generates a clean, unique file path under products/{product-slug}/{timestamp}-{sanitized-filename}
+ */
+export function generateStoragePath(productSlug: string, filename: string): string {
+  const sanitized = sanitizeFilename(filename);
+  const cleanSlug = productSlug
+    ? productSlug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
+    : 'product';
+  const timestamp = Date.now();
+  return `products/${cleanSlug}/${timestamp}-${sanitized}`;
+}
+
+/**
+ * Uploads a validated image file directly to Firebase Storage using the Firebase Web SDK.
  */
 export async function uploadProductImage(
   file: File,
-  productId: string,
+  productSlug: string,
   onProgress?: UploadProgressCallback
 ): Promise<UploadResult> {
   const validation = validateImageFile(file);
@@ -63,50 +80,38 @@ export async function uploadProductImage(
     throw new Error('Authentication required: Admin login required to upload product images.');
   }
 
-  const idToken = await currentUser.getIdToken();
+  const storagePath = generateStoragePath(productSlug, file.name);
+  const storageRef = ref(storage, storagePath);
+
+  const uploadTask = uploadBytesResumable(storageRef, file, {
+    contentType: file.type || 'image/jpeg',
+  });
 
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/admin/upload');
-    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
-
-    if (onProgress) {
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        if (onProgress && snapshot.totalBytes > 0) {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
           onProgress(progress);
         }
-      };
-    }
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
+      },
+      (error) => {
+        console.error('Firebase Storage upload error:', error);
+        reject(new Error(error.message || 'Image upload failed.'));
+      },
+      async () => {
         try {
-          const data = JSON.parse(xhr.responseText);
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           resolve({
-            url: data.downloadURL,
-            path: data.storagePath,
+            url: downloadURL,
+            path: storagePath,
           });
-        } catch {
-          reject(new Error('Invalid server response during image upload.'));
-        }
-      } else {
-        try {
-          const errData = JSON.parse(xhr.responseText);
-          reject(new Error(errData.error || `Upload failed (${xhr.status})`));
-        } catch {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+        } catch (err: any) {
+          reject(new Error(err.message || 'Failed to retrieve download URL.'));
         }
       }
-    };
-
-    xhr.onerror = () => {
-      reject(new Error('Network error occurred during image upload.'));
-    };
-
-    const formData = new FormData();
-    formData.append('file', file);
-    xhr.send(formData);
+    );
   });
 }
 
