@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CatalogProduct, ProductCategory } from '../../types';
+import { CatalogProduct, ProductCategory, SourcingTier } from '../../types';
 import { Plus, Edit2, Trash2, Search, Filter, Image as ImageIcon, CheckCircle, XCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface ProductListProps {
@@ -51,10 +51,19 @@ export const ProductList: React.FC<ProductListProps> = ({
       return orderA - orderB;
     });
 
-  // Calculate lowest price for a product
+  // Calculate lowest price for a product across all variants
   const getLowestPrice = (product: CatalogProduct): number => {
     if (!product.variants || product.variants.length === 0) return 0;
-    return Math.min(...product.variants.map((v) => v.price));
+    return Math.min(...product.variants.map((v) => v.sellingPrice ?? v.price ?? 0));
+  };
+
+  // Extract distinct sourcing tiers for a product
+  const getDistinctSourcingTiers = (product: CatalogProduct): SourcingTier[] => {
+    if (!product.variants) return [];
+    const tiers = product.variants
+      .map((v) => v.sourcingTier)
+      .filter((t): t is SourcingTier => Boolean(t));
+    return Array.from(new Set(tiers));
   };
 
   // Check overall stock status
@@ -228,6 +237,30 @@ export const ProductList: React.FC<ProductListProps> = ({
                                   .join(' • ')}
                               </p>
                             )}
+
+                            {/* Distinct Sourcing Tier Badges */}
+                            {(() => {
+                              const tiers = getDistinctSourcingTiers(product);
+                              if (tiers.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {tiers.map((tier) => (
+                                    <span
+                                      key={tier}
+                                      className={`inline-block px-1.5 py-0.5 text-[10px] rounded border font-semibold ${
+                                        tier === 'Certified Organic'
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                          : tier === 'Organically Grown'
+                                          ? 'bg-teal-50 text-teal-800 border-teal-200'
+                                          : 'bg-sky-50 text-sky-800 border-sky-200'
+                                      }`}
+                                    >
+                                      {tier}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </td>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CatalogProduct, ProductCategory, ProductVariant, StockStatus } from '../../types';
+import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_TIERS, SourcingTier } from '../../types';
 import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
@@ -65,14 +65,28 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   // Pack-size variants
   const [variants, setVariants] = useState<ProductVariant[]>(
     product?.variants && product.variants.length > 0
-      ? [...product.variants]
+      ? product.variants.map((v, i) => ({
+          id: v.id || 'var-' + Date.now() + '-' + (i + 1),
+          sourcingTier: v.sourcingTier,
+          label: v.label || '',
+          sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 99),
+          previousPrice: typeof v.previousPrice === 'number' ? v.previousPrice : (typeof v.mrp === 'number' ? v.mrp : undefined),
+          stockStatus: v.stockStatus || 'in_stock',
+          note: v.note || '',
+          price: typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 99),
+          mrp: typeof v.previousPrice === 'number' ? v.previousPrice : (typeof v.mrp === 'number' ? v.mrp : undefined),
+        }))
       : [
           {
             id: 'var-' + Date.now() + '-1',
+            sourcingTier: 'Certified Organic',
             label: '250 g',
+            sellingPrice: 99,
+            previousPrice: 120,
+            stockStatus: 'in_stock',
+            note: '',
             price: 99,
             mrp: 120,
-            stockStatus: 'in_stock',
           },
         ]
   );
@@ -200,24 +214,39 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       ...variants,
       {
         id: 'var-' + Date.now() + '-' + (variants.length + 1),
+        sourcingTier: variants[variants.length - 1]?.sourcingTier || 'Certified Organic',
         label: '500 g',
+        sellingPrice: 150,
+        previousPrice: 180,
+        stockStatus: 'in_stock',
+        note: '',
         price: 150,
         mrp: 180,
-        stockStatus: 'in_stock',
       },
     ]);
   };
 
   const handleUpdateVariant = (
     index: number,
-    field: keyof ProductVariant,
+    field: keyof ProductVariant | 'price' | 'mrp',
     value: any
   ) => {
     const updated = [...variants];
-    updated[index] = {
-      ...updated[index],
-      [field]: field === 'price' || field === 'mrp' ? (value === '' ? '' : Number(value)) : value,
-    };
+    const target = { ...updated[index] };
+
+    if (field === 'sellingPrice' || field === 'price') {
+      const num = value === '' ? ('' as any) : Number(value);
+      target.sellingPrice = num;
+      target.price = num;
+    } else if (field === 'previousPrice' || field === 'mrp') {
+      const num = value === '' ? undefined : Number(value);
+      target.previousPrice = num;
+      target.mrp = num;
+    } else {
+      (target as any)[field] = value;
+    }
+
+    updated[index] = target;
     setVariants(updated);
   };
 
@@ -261,12 +290,36 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     if (variants.length === 0) {
       newErrors.variants = 'At least 1 pack-size variant is required';
     } else {
+      const comboSet = new Set<string>();
+
       variants.forEach((v, idx) => {
-        if (!v.label.trim()) {
-          newErrors[`variant_label_${idx}`] = 'Label required';
+        if (!v.sourcingTier) {
+          newErrors[`variant_tier_${idx}`] = 'Please select a Sourcing Tier';
         }
-        if (typeof v.price !== 'number' || isNaN(v.price) || v.price <= 0) {
-          newErrors[`variant_price_${idx}`] = 'Valid price required';
+        if (!v.label || !v.label.trim()) {
+          newErrors[`variant_label_${idx}`] = 'Pack size is required';
+        }
+
+        const currentPrice = v.sellingPrice ?? v.price;
+        if (
+          currentPrice === undefined ||
+          currentPrice === null ||
+          currentPrice === ('' as any) ||
+          isNaN(Number(currentPrice)) ||
+          Number(currentPrice) <= 0
+        ) {
+          newErrors[`variant_price_${idx}`] = 'Valid selling price required';
+        }
+
+        // Check duplicate (Sourcing Tier + Pack Size) combination
+        if (v.sourcingTier && v.label && v.label.trim()) {
+          const comboKey = `${v.sourcingTier.trim().toLowerCase()}:::${v.label.trim().toLowerCase()}`;
+          if (comboSet.has(comboKey)) {
+            newErrors[`variant_duplicate_${idx}`] = `Duplicate option: "${v.sourcingTier}" with "${v.label.trim()}". Each variant option must be unique.`;
+            newErrors.variants = 'Duplicate variants found. Please ensure each Sourcing Tier + Pack Size combination is unique.';
+          } else {
+            comboSet.add(comboKey);
+          }
         }
       });
     }
@@ -281,6 +334,25 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
 
     const cleanedImages = images.filter((img) => img.trim().length > 0);
 
+    const formattedVariants: ProductVariant[] = variants.map((v) => {
+      const sellPrice = Number(v.sellingPrice ?? v.price ?? 0);
+      const prevPrice = v.previousPrice !== undefined && v.previousPrice !== null && v.previousPrice !== ('' as any)
+        ? Number(v.previousPrice)
+        : (v.mrp !== undefined && v.mrp !== null && v.mrp !== ('' as any) ? Number(v.mrp) : undefined);
+
+      return {
+        id: v.id || 'var-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        sourcingTier: v.sourcingTier!,
+        label: v.label.trim(),
+        sellingPrice: sellPrice,
+        ...(prevPrice !== undefined && !isNaN(prevPrice) ? { previousPrice: prevPrice } : {}),
+        stockStatus: v.stockStatus || 'in_stock',
+        ...(v.note && v.note.trim() ? { note: v.note.trim() } : {}),
+        price: sellPrice,
+        ...(prevPrice !== undefined && !isNaN(prevPrice) ? { mrp: prevPrice } : {}),
+      };
+    });
+
     const savedProduct: CatalogProduct = {
       id: product?.id || 'prod-' + Date.now(),
       name: name.trim(),
@@ -294,12 +366,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       regionalNameKannada: regionalNameKannada.trim() || undefined,
       regionalNameHindi: regionalNameHindi.trim() || undefined,
       images: cleanedImages,
-      variants: variants.map((v) => ({
-        ...v,
-        label: v.label.trim(),
-        price: Number(v.price),
-        mrp: v.mrp ? Number(v.mrp) : undefined,
-      })),
+      variants: formattedVariants,
       isActive,
       createdAt: product?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -732,13 +799,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
         {/* Pack-size Variants */}
         <div className="space-y-4">
           <div className="flex justify-between items-center pb-2 border-b border-stone-100">
-            <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
-              6. Pack-size Variants
-            </h3>
+            <div>
+              <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
+                6. Pack-size Variants
+              </h3>
+              <p className="text-[11px] text-stone-500 mt-0.5">
+                Each variant represents one complete purchasable product option (Sourcing Tier + Pack Size).
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleAddVariant}
-              className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5" /> Add Variant
             </button>
@@ -748,94 +820,144 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
             {variants.map((v, idx) => (
               <div
                 key={v.id || idx}
-                className="p-3.5 bg-stone-50 border border-stone-200 rounded-xl grid grid-cols-1 md:grid-cols-12 gap-3 items-center"
+                className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-3 relative group"
               >
-                {/* Variant Label */}
-                <div className="md:col-span-3">
-                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                    Label (e.g. 250 g, 1 kg)
-                  </label>
-                  <input
-                    type="text"
-                    value={v.label}
-                    onChange={(e) => handleUpdateVariant(idx, 'label', e.target.value)}
-                    placeholder="e.g. 250 g, 1 Head"
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  />
-                  {errors[`variant_label_${idx}`] && (
-                    <p className="text-[10px] text-red-600 mt-0.5">
-                      {errors[`variant_label_${idx}`]}
-                    </p>
-                  )}
-                </div>
-
-                {/* Selling Price */}
-                <div className="md:col-span-3">
-                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                    Selling Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={v.price}
-                    onChange={(e) => handleUpdateVariant(idx, 'price', e.target.value)}
-                    placeholder="99"
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  />
-                  {errors[`variant_price_${idx}`] && (
-                    <p className="text-[10px] text-red-600 mt-0.5">
-                      {errors[`variant_price_${idx}`]}
-                    </p>
-                  )}
-                </div>
-
-                {/* Optional MRP */}
-                <div className="md:col-span-2">
-                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                    Previous Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={v.mrp || ''}
-                    onChange={(e) => handleUpdateVariant(idx, 'mrp', e.target.value)}
-                    placeholder="120"
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  />
-                </div>
-
-                {/* Stock Status */}
-                <div className="md:col-span-3">
-                  <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                    Stock Status
-                  </label>
-                  <select
-                    value={v.stockStatus}
-                    onChange={(e) => handleUpdateVariant(idx, 'stockStatus', e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  >
-                    {STOCK_STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Remove Variant Button */}
-                <div className="md:col-span-1 flex justify-end">
+                {/* Variant Item Header */}
+                <div className="flex justify-between items-center border-b border-stone-200/70 pb-2">
+                  <span className="text-xs font-mono font-bold text-stone-700 uppercase">
+                    Variant #{idx + 1}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemoveVariant(idx)}
                     disabled={variants.length === 1}
-                    className="p-1.5 text-stone-400 hover:text-red-600 disabled:opacity-30 transition-colors"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-stone-400 hover:text-red-600 disabled:opacity-30 transition-colors cursor-pointer"
                     title="Remove variant"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" /> Remove
                   </button>
                 </div>
+
+                {/* Primary Fields Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-start">
+                  {/* 1. Sourcing Tier */}
+                  <div className="lg:col-span-2">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Sourcing Tier <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={v.sourcingTier || ''}
+                      onChange={(e) => handleUpdateVariant(idx, 'sourcingTier', e.target.value)}
+                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
+                        errors[`variant_tier_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
+                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-medium text-stone-800`}
+                    >
+                      <option value="" disabled>-- Select Sourcing Tier --</option>
+                      {SOURCING_TIERS.map((tier) => (
+                        <option key={tier} value={tier}>
+                          {tier}
+                        </option>
+                      ))}
+                    </select>
+                    {errors[`variant_tier_${idx}`] && (
+                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_tier_${idx}`]}</p>
+                    )}
+                  </div>
+
+                  {/* 2. Pack Size */}
+                  <div className="lg:col-span-1">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Pack Size <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={v.label}
+                      onChange={(e) => handleUpdateVariant(idx, 'label', e.target.value)}
+                      placeholder="e.g. 250 g, 1 kg"
+                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
+                        errors[`variant_label_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
+                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600`}
+                    />
+                    {errors[`variant_label_${idx}`] && (
+                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_label_${idx}`]}</p>
+                    )}
+                  </div>
+
+                  {/* 3. Selling Price */}
+                  <div className="lg:col-span-1">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Selling Price (₹) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={v.sellingPrice ?? v.price ?? ''}
+                      onChange={(e) => handleUpdateVariant(idx, 'sellingPrice', e.target.value)}
+                      placeholder="99"
+                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
+                        errors[`variant_price_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
+                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-mono`}
+                    />
+                    {errors[`variant_price_${idx}`] && (
+                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_price_${idx}`]}</p>
+                    )}
+                  </div>
+
+                  {/* 4. Previous Price */}
+                  <div className="lg:col-span-1">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Previous Price (₹) <span className="text-stone-400 font-normal">(Opt)</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={v.previousPrice ?? v.mrp ?? ''}
+                      onChange={(e) => handleUpdateVariant(idx, 'previousPrice', e.target.value)}
+                      placeholder="120"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white font-mono"
+                    />
+                  </div>
+
+                  {/* 5. Stock Status */}
+                  <div className="lg:col-span-1">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Stock Status <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={v.stockStatus}
+                      onChange={(e) => handleUpdateVariant(idx, 'stockStatus', e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white font-medium"
+                    >
+                      {STOCK_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 6. Growing Method / Note */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                    Growing Method / Note <span className="text-stone-400 font-normal">(Optional e.g. Hydroponically Grown, Soil Grown, Greenhouse Grown, Naturally Ripened)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={v.note || ''}
+                    onChange={(e) => handleUpdateVariant(idx, 'note', e.target.value)}
+                    placeholder="e.g. Hydroponically Grown, Soil Grown, Greenhouse Grown..."
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                  />
+                </div>
+
+                {errors[`variant_duplicate_${idx}`] && (
+                  <p className="text-[11px] font-semibold text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">
+                    {errors[`variant_duplicate_${idx}`]}
+                  </p>
+                )}
               </div>
             ))}
           </div>
-          {errors.variants && <p className="text-[11px] text-red-600">{errors.variants}</p>}
+          {errors.variants && <p className="text-[11px] text-red-600 font-semibold">{errors.variants}</p>}
         </div>
 
         {/* Footer Actions */}

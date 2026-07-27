@@ -6,14 +6,30 @@ export type ProductCategory =
   | 'Exotics' 
   | 'Mushrooms';
 
+export type SourcingTier = 
+  | 'Certified Organic'
+  | 'Organically Grown'
+  | 'Pesticide Residue Free';
+
+export const SOURCING_TIERS: SourcingTier[] = [
+  'Certified Organic',
+  'Organically Grown',
+  'Pesticide Residue Free',
+];
+
 export type StockStatus = 'in_stock' | 'out_of_stock' | 'low_stock';
 
 export interface ProductVariant {
   id: string;
-  label: string; // e.g. "250 g", "500 g", "1 kg", "1 bunch", "1 pc"
-  price: number; // selling price
-  mrp?: number; // optional previous price / MRP
+  sourcingTier?: SourcingTier; // Required on save, optional for un-updated legacy docs
+  label: string; // Pack size e.g. "250 g", "500 g", "1 kg", "Bunch", "Piece"
+  sellingPrice?: number; // Selling price
+  previousPrice?: number; // Optional previous price / MRP
   stockStatus: StockStatus;
+  note?: string; // Optional Growing Method / Note
+  // Legacy backward compatibility aliases
+  price?: number;
+  mrp?: number;
 }
 
 export interface CatalogProduct {

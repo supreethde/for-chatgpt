@@ -23,17 +23,25 @@ export const INITIAL_PRODUCTS: CatalogProduct[] = [
     variants: [
       {
         id: 'var-101',
+        sourcingTier: 'Organically Grown',
         label: '1 Head (approx 180g)',
+        sellingPrice: 95,
+        previousPrice: 120,
         price: 95,
         mrp: 120,
-        stockStatus: 'in_stock'
+        stockStatus: 'in_stock',
+        note: 'Hydroponically Grown'
       },
       {
         id: 'var-102',
+        sourcingTier: 'Organically Grown',
         label: 'Pack of 2 Heads',
+        sellingPrice: 175,
+        previousPrice: 230,
         price: 175,
         mrp: 230,
-        stockStatus: 'in_stock'
+        stockStatus: 'in_stock',
+        note: 'Hydroponically Grown'
       }
     ],
     isActive: true,
@@ -62,17 +70,25 @@ export const INITIAL_PRODUCTS: CatalogProduct[] = [
     variants: [
       {
         id: 'var-201',
+        sourcingTier: 'Certified Organic',
         label: '250 g',
+        sellingPrice: 140,
+        previousPrice: 180,
         price: 140,
         mrp: 180,
-        stockStatus: 'in_stock'
+        stockStatus: 'in_stock',
+        note: 'Oak Sawdust Cultivated'
       },
       {
         id: 'var-202',
+        sourcingTier: 'Certified Organic',
         label: '500 g',
+        sellingPrice: 260,
+        previousPrice: 340,
         price: 260,
         mrp: 340,
-        stockStatus: 'low_stock'
+        stockStatus: 'low_stock',
+        note: 'Oak Sawdust Cultivated'
       }
     ],
     isActive: true,
@@ -100,10 +116,14 @@ export const INITIAL_PRODUCTS: CatalogProduct[] = [
     variants: [
       {
         id: 'var-301',
+        sourcingTier: 'Organically Grown',
         label: '100 g tray',
+        sellingPrice: 110,
+        previousPrice: 140,
         price: 110,
         mrp: 140,
-        stockStatus: 'in_stock'
+        stockStatus: 'in_stock',
+        note: 'Living Tray'
       }
     ],
     isActive: true,
@@ -124,24 +144,32 @@ export const INITIAL_PRODUCTS: CatalogProduct[] = [
     ],
     description: 'Our red cherry tomatoes are grown on guided trellises in sunny greenhouse bays, allowing each cluster to absorb natural sunlight until perfectly ripe. The result is a vibrant crimson tomato with thin skin, firm flesh, and an explosive sweet flavor that elevates fresh caprese salads, roasted pastas, or quick appetizers. Every punnet is carefully hand-sorted to ensure uniform size and zero blemishes.',
     regionalNameKannada: 'ಸಿಹಿ ಚೆರ್ರಿ ಟೊಮೆಟೊ (Sihi Cherry Tomato)',
-    regionalNameHindi: 'मीठा चेरी टमाटर (Meetha Cherry Tamatar)',
+    regionalNameHindi: 'ಮೀಠಾ ಚೇರೀ ಟಮಾಟರ್ (Meetha Cherry Tamatar)',
     images: [
       'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80'
     ],
     variants: [
       {
         id: 'var-401',
+        sourcingTier: 'Pesticide Residue Free',
         label: '250 g punnet',
+        sellingPrice: 85,
+        previousPrice: 110,
         price: 85,
         mrp: 110,
-        stockStatus: 'in_stock'
+        stockStatus: 'in_stock',
+        note: 'Greenhouse Grown'
       },
       {
         id: 'var-402',
+        sourcingTier: 'Pesticide Residue Free',
         label: '500 g punnet',
+        sellingPrice: 160,
+        previousPrice: 210,
         price: 160,
         mrp: 210,
-        stockStatus: 'out_of_stock'
+        stockStatus: 'out_of_stock',
+        note: 'Greenhouse Grown'
       }
     ],
     isActive: false,
