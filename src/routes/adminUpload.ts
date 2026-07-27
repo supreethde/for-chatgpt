@@ -50,7 +50,7 @@ router.post(
         return res.status(401).json({ error: 'Unauthorized: Invalid token' });
       }
 
-      // 2. Fetch user record from named Firestore database (ai-studio-079b0c89-47e0-457f-8055-81794a58a547)
+      // 2. Fetch user record from Firestore database
       const userRef = adminDb.collection('users').doc(decodedToken.uid);
       const userSnap = await userRef.get();
 

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import { db } from "./src/db/index.ts";
 import { users, inquiries } from "./src/db/schema.ts";
@@ -9,7 +10,20 @@ import adminUploadRouter from "./src/routes/adminUpload.ts";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+
+  app.use(
+    cors({
+      origin: [
+        "https://thesoiltheory.in",
+        "https://www.thesoiltheory.in",
+        "http://localhost:3000",
+        "http://localhost:5173",
+      ],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
 
   app.use(express.json());
   app.use(adminUploadRouter);

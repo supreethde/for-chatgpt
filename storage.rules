@@ -18,8 +18,9 @@ service firebase.storage {
       return isSignedIn() && (
         request.auth.token.admin == true ||
         (
-          firestore.exists(/databases/ai-studio-079b0c89-47e0-457f-8055-81794a58a547/documents/users/$(request.auth.uid)) &&
-          firestore.get(/databases/ai-studio-079b0c89-47e0-457f-8055-81794a58a547/documents/users/$(request.auth.uid)).data.role == 'admin'
+          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true
         )
       );
     }

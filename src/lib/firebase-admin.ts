@@ -12,6 +12,7 @@ const app = !getApps().length
   : getApp();
 
 export const adminAuth = getAuth(app);
-export const adminDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const dbId = firebaseConfig.firestoreDatabaseId;
+export const adminDb = !dbId || dbId === '(default)' ? getFirestore(app) : getFirestore(app, dbId);
 export const adminBucket = getStorage(app).bucket(firebaseConfig.storageBucket);
 

@@ -1,12 +1,12 @@
 {
-  "projectId": "fit-veld-l07pf",
-  "appId": "1:490350159597:web:53320abb067c3e1bac8ee4",
-  "apiKey": "AIzaSyARWNhYMoT0DlJsginWw8SwR9cfYsFXBow",
-  "authDomain": "fit-veld-l07pf.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-079b0c89-47e0-457f-8055-81794a58a547",
-  "storageBucket": "fit-veld-l07pf.firebasestorage.app",
-  "messagingSenderId": "490350159597",
-  "measurementId": "",
-  "oAuthClientId": "490350159597-pf3ctn8im7fehelmltjmb8be50vj6go3.apps.googleusercontent.com",
+  "projectId": "the-soil-theory",
+  "appId": "1:707297320926:web:c31ea78e5f8a549e42074f",
+  "apiKey": "AIzaSyCfbSrAFmUOoIPibveURO7tWAVl7KWYx_Q",
+  "authDomain": "the-soil-theory.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "the-soil-theory.firebasestorage.app",
+  "messagingSenderId": "707297320926",
+  "measurementId": "G-WQDD24HVWQ",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
