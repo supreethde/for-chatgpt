@@ -10,34 +10,34 @@ service firebase.storage {
 
     /**
      * Admin Authorization Check:
-     * Checks if the authenticated user either has a custom claim `admin == true`
-     * OR has a document in the Firestore `/users/{uid}` collection with `role == 'admin'`.
-     * Note: Change `(default)` below to your custom firestore database ID if not using default.
+     * Matches the Firestore authorization strategy:
+     * 1. Custom Auth claim (`request.auth.token.admin == true`), OR
+     * 2. Firestore user profile check (`/users/{uid}` document with `role == 'admin'`).
      */
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
         (
-          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
-          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+          firestore.exists(/databases/ai-studio-079b0c89-47e0-457f-8055-81794a58a547/documents/users/$(request.auth.uid)) &&
+          firestore.get(/databases/ai-studio-079b0c89-47e0-457f-8055-81794a58a547/documents/users/$(request.auth.uid)).data.role == 'admin'
         )
       );
     }
 
     function isSupportedImageType() {
-      return request.resource.contentType.matches('image/(jpeg|png|webp)');
+      return request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif|svg\\+xml)');
     }
 
     function isWithinFileSizeLimit() {
-      return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+      return request.resource.size < 10 * 1024 * 1024; // 10MB limit
     }
 
-    // Product Images Path: products/{productId}/{fileName}
-    match /products/{productId}/{fileName} {
+    // Product Images Path: products/ and any nested files under products/
+    match /products/{filePath=**} {
       // Public read access for product catalog images
       allow read: if true;
 
-      // Restrict upload & replacement to authorized admins only with strict file type and size constraints
+      // Restrict upload & replacement to authorized admins only with file type and size constraints
       allow create, update: if isAdmin() 
         && isSupportedImageType() 
         && isWithinFileSizeLimit();
@@ -52,3 +52,4 @@ service firebase.storage {
     }
   }
 }
+
