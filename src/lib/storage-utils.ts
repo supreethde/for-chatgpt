@@ -1,10 +1,8 @@
 import { 
   ref, 
-  uploadBytesResumable, 
-  getDownloadURL, 
   deleteObject 
 } from 'firebase/storage';
-import { storage } from './firebase';
+import { storage, auth } from './firebase';
 import { UploadProgressCallback, UploadResult } from '../types';
 
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -48,65 +46,67 @@ export function generateStoragePath(productId: string, filename: string): string
 }
 
 /**
- * Uploads a validated image file to Firebase Storage under products/{productId}/
+ * Uploads a validated image file using the server Admin upload API endpoint
  */
-export function uploadProductImage(
+export async function uploadProductImage(
   file: File,
   productId: string,
   onProgress?: UploadProgressCallback
 ): Promise<UploadResult> {
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Invalid file');
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required: Admin login required to upload product images.');
+  }
+
+  const idToken = await currentUser.getIdToken();
+
   return new Promise((resolve, reject) => {
-    // 1. Validate file
-    const validation = validateImageFile(file);
-    if (!validation.valid) {
-      return reject(new Error(validation.error || 'Invalid file'));
-    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/upload');
+    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
 
-    // 2. Generate storage path and reference
-    const path = generateStoragePath(productId, file.name);
-    const storageRef = ref(storage, path);
-
-    // 3. Start resumable upload
-    const uploadTask = uploadBytesResumable(storageRef, file, {
-      contentType: file.type,
-      customMetadata: {
-        originalName: file.name,
-        uploadedAt: new Date().toISOString(),
-      }
-    });
-
-    // 4. Track progress and state changes
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        if (snapshot.totalBytes > 0 && onProgress) {
-          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
           onProgress(progress);
         }
-      },
-      (error) => {
-        let errorMessage = 'Failed to upload image to Firebase Storage.';
-        if (error.code === 'storage/unauthorized') {
-          errorMessage = 'Permission denied: Admin authorization required to upload product images.';
-        } else if (error.code === 'storage/canceled') {
-          errorMessage = 'Image upload was canceled.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        reject(new Error(errorMessage));
-      },
-      async () => {
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          const data = JSON.parse(xhr.responseText);
           resolve({
-            url,
-            path,
+            url: data.downloadURL,
+            path: data.storagePath,
           });
-        } catch (err) {
-          reject(new Error('Failed to retrieve download URL for uploaded image.'));
+        } catch {
+          reject(new Error('Invalid server response during image upload.'));
+        }
+      } else {
+        try {
+          const errData = JSON.parse(xhr.responseText);
+          reject(new Error(errData.error || `Upload failed (${xhr.status})`));
+        } catch {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
         }
       }
-    );
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error occurred during image upload.'));
+    };
+
+    const formData = new FormData();
+    formData.append('file', file);
+    xhr.send(formData);
   });
 }
 

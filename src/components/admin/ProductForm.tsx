@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_TIERS, SourcingTier } from '../../types';
 import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../lib/firebase';
+import { auth } from '../../lib/firebase';
 
 interface ProductFormProps {
   product?: CatalogProduct | null; // null if adding new product
@@ -128,10 +127,17 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     setHighlights(updated);
   };
 
-  // Image Upload Handler using Firebase Storage
+  // Image Upload Handler using Server Admin API (/api/admin/upload)
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
     if (files.length === 0) return;
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setUploadError('You must be signed in as an administrator to upload images.');
+      if (e.target) e.target.value = '';
+      return;
+    }
 
     const maxAllowed = 5;
     const currentCount = images.length;
@@ -151,42 +157,57 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     const newUploadedUrls: string[] = [];
 
     try {
+      const idToken = await currentUser.getIdToken();
+
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         setUploadStatusText(`Uploading image ${i + 1} of ${selectedFiles.length}...`);
 
-        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const storagePath = `products/${Date.now()}_${cleanName}`;
-        const storageRef = ref(storage, storagePath);
-
-        const uploadTask = uploadBytesResumable(storageRef, file, {
-          contentType: file.type,
-        });
-
         await new Promise<void>((resolve, reject) => {
-          uploadTask.on(
-            'state_changed',
-            (snapshot) => {
-              const filePercent = snapshot.totalBytes > 0 ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/admin/upload');
+          xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const filePercent = event.loaded / event.total;
               const overallPercent = Math.round(
                 ((i + filePercent) / selectedFiles.length) * 100
               );
               setUploadProgress(overallPercent);
-            },
-            (error) => {
-              console.error('Firebase storage upload error:', error);
-              reject(error);
-            },
-            async () => {
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
               try {
-                const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                newUploadedUrls.push(downloadUrl);
-                resolve();
-              } catch (err) {
-                reject(err);
+                const data = JSON.parse(xhr.responseText);
+                if (data.downloadURL) {
+                  newUploadedUrls.push(data.downloadURL);
+                  resolve();
+                } else {
+                  reject(new Error('Invalid response from upload server.'));
+                }
+              } catch {
+                reject(new Error('Failed to parse server response.'));
+              }
+            } else {
+              try {
+                const errData = JSON.parse(xhr.responseText);
+                reject(new Error(errData.error || `Upload failed with status ${xhr.status}`));
+              } catch {
+                reject(new Error(`Upload failed with status ${xhr.status}`));
               }
             }
-          );
+          };
+
+          xhr.onerror = () => {
+            reject(new Error('Network error occurred during image upload.'));
+          };
+
+          const formData = new FormData();
+          formData.append('file', file);
+          xhr.send(formData);
         });
       }
 
@@ -199,7 +220,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       }, 800);
     } catch (err: any) {
       console.error('Failed to upload image(s):', err);
-      setUploadError(err?.message || 'Failed to upload image to Firebase Storage.');
+      setUploadError(err?.message || 'Failed to upload image.');
       setUploading(false);
     } finally {
       if (e.target) e.target.value = '';

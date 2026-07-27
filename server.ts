@@ -5,12 +5,14 @@ import { db } from "./src/db/index.ts";
 import { users, inquiries } from "./src/db/schema.ts";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
+import adminUploadRouter from "./src/routes/adminUpload.ts";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(adminUploadRouter);
 
   // API Route: Health Check
   app.get("/api/health", (req, res) => {
