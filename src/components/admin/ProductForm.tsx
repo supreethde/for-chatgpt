@@ -159,7 +159,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
         const storagePath = `products/${Date.now()}_${cleanName}`;
         const storageRef = ref(storage, storagePath);
 
-        const uploadTask = uploadBytesResumable(storageRef, file);
+        const uploadTask = uploadBytesResumable(storageRef, file, {
+          contentType: file.type,
+        });
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on(
