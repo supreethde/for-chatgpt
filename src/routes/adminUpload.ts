@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { adminAuth, adminDb, adminBucket } from '../lib/firebase-admin.ts';
+import { adminAuth, adminDb, adminBucket } from '../lib/firebase-admin';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const router = Router();

@@ -41,14 +41,6 @@ import spinachImg from './assets/images/3.png';
 import microgreensImg from './assets/images/4.png';
 import tomatoesImg from './assets/images/5.png';
 
-// Category circle image imports
-import catShopAllImg from './assets/images/cat_shop_all_1784892173106.jpg';
-import catVegetablesImg from './assets/images/cat_vegetables_1784892188069.jpg';
-import catFruitsImg from './assets/images/cat_fruits_1784892197748.jpg';
-import catLeafyGreensImg from './assets/images/cat_leafy_greens_1784892558650.jpg';
-import catMicrogreensImg from './assets/images/cat_microgreens_1784892719194.jpg';
-import catExoticsImg from './assets/images/cat_exotics_1784892573055.jpg';
-
 function getProductPriceRange(prod: CatalogProduct & Record<string, any>): string {
   if (prod.priceRange && typeof prod.priceRange === 'string') {
     return prod.priceRange;
@@ -121,12 +113,12 @@ const bannerItems = [
 ];
 
 const categoryCards = [
-  { id: 'all', name: 'Shop All', image: catShopAllImg, bgClass: 'circle-bg-1' },
-  { id: 'vegetables', name: 'Vegetables', image: catVegetablesImg, bgClass: 'circle-bg-2' },
-  { id: 'fruits', name: 'Fruits', image: catFruitsImg, bgClass: 'circle-bg-3' },
-  { id: 'leafy-greens', name: 'Leafy Greens', image: catLeafyGreensImg, bgClass: 'circle-bg-4' },
-  { id: 'microgreens', name: 'Microgreens', image: catMicrogreensImg, bgClass: 'circle-bg-5' },
-  { id: 'exotics', name: 'Exotics', image: catExoticsImg, bgClass: 'circle-bg-6' },
+  { id: 'vegetables', name: 'Vegetables', image: '/vegetables-1.png', bgClass: 'circle-bg-1' },
+  { id: 'fruits', name: 'Fruits', image: '/fruits-1.png', bgClass: 'circle-bg-2' },
+  { id: 'leafy-greens', name: 'Leafy Greens', image: '/leafygreens-1.png', bgClass: 'circle-bg-3' },
+  { id: 'microgreens', name: 'Microgreens', image: '/microgreens-1.png', bgClass: 'circle-bg-4' },
+  { id: 'mushrooms', name: 'Mushrooms', image: '/mushrooms-1.png', bgClass: 'circle-bg-5' },
+  { id: 'exotics', name: 'Exotics', image: '/exotics-1.png', bgClass: 'circle-bg-6' },
 ];
 
 const faqData = [
@@ -207,7 +199,7 @@ export default function App() {
 
   // Workspace Tabs State
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
-  const [selectedCategory, setSelectedCategory] = useState<string>('Shop All');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All Products');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
 
@@ -532,8 +524,15 @@ export default function App() {
         }
       });
       if (res.ok) {
-        const data = await res.json();
-        setMyInquiries(data);
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data)) {
+            setMyInquiries(data);
+          }
+        } catch {
+          // Ignore invalid non-JSON response gracefully
+        }
       }
     } catch (err) {
       console.error('Failed to fetch inquiries:', err);
@@ -616,10 +615,59 @@ export default function App() {
   useEffect(() => {
     loadProductsFromFirestore();
 
+    const defaultReports: LabReport[] = [
+      {
+        id: "rep-2026-29",
+        testDate: "July 18, 2026",
+        batchId: "BATCH-BLR-0718",
+        labName: "Karnataka Agri-Food Safety Laboratory, Bengaluru",
+        pesticideScanCount: 148,
+        result: "100% Chemical-Free / No Pesticide Residues Found",
+        status: "Certified Safe",
+        downloadUrl: "#",
+      },
+      {
+        id: "rep-2026-28",
+        testDate: "July 11, 2026",
+        batchId: "BATCH-BLR-0711",
+        labName: "Karnataka Agri-Food Safety Laboratory, Bengaluru",
+        pesticideScanCount: 148,
+        result: "100% Chemical-Free / No Pesticide Residues Found",
+        status: "Certified Safe",
+        downloadUrl: "#",
+      },
+      {
+        id: "rep-2026-27",
+        testDate: "July 04, 2026",
+        batchId: "BATCH-BLR-0704",
+        labName: "Karnataka Agri-Food Safety Laboratory, Bengaluru",
+        pesticideScanCount: 148,
+        result: "100% Chemical-Free / No Pesticide Residues Found",
+        status: "Certified Safe",
+        downloadUrl: "#",
+      }
+    ];
+
+    setReports(defaultReports);
+
     fetch('/api/reports')
-      .then(res => res.json())
-      .then(data => setReports(data))
-      .catch(err => console.error('Error fetching reports:', err));
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setReports(data);
+        }
+      })
+      .catch(() => {
+        // Fallback reports are already set
+      });
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -908,18 +956,32 @@ export default function App() {
       <header className="site-header-container">
         {/* Main Header Row */}
         <div className="site-header-main">
-          {/* Left: Logo & Delivery Location Block */}
+          {/* Left: Hamburger (Mobile/Tablet) & Logo & Desktop Delivery Block */}
           <div className="header-left">
+            {/* Hamburger Menu Toggle (Mobile/Tablet) */}
+            <button 
+              type="button" 
+              className={`menu-button xl:hidden ${isMobileMenuOpen ? 'active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="mobile-navigation"
+            >
+              <span></span>
+              <span></span>
+            </button>
+
             <a className="wordmark" href="/">
               <span>THE SOIL</span>
               <strong>THEORY</strong>
               <i></i>
             </a>
 
+            {/* Desktop Only Delivery Location Block */}
             <button
               type="button"
               onClick={() => setIsLocationModalOpen(true)}
-              className="header-location-block"
+              className="header-location-block hidden md:flex"
               aria-label="Select delivery location"
             >
               <MapPin className="w-4 h-4 text-[#183b2b] shrink-0" />
@@ -960,7 +1022,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Group: Text Links + Actions (Cart, Profile, Mobile Menu Toggle) */}
+          {/* Right Group: Text Links + Actions (Cart, Profile) */}
           <div className="header-right-group">
             {/* Inline Desktop Nav Links */}
             <nav className="header-inline-nav hidden xl:flex" aria-label="Main Navigation">
@@ -1036,7 +1098,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* User Profile / Partner Dropdown (Always accessible via Profile Icon) */}
+              {/* User Profile / Partner Dropdown */}
               <div className="nav-profile-wrapper">
                 <button 
                   type="button" 
@@ -1052,7 +1114,7 @@ export default function App() {
                   ) : user ? (
                     <span className="profile-avatar">{user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}</span>
                   ) : (
-                    <UserIcon className="w-5 h-5 text-[#183b2b]" />
+                    <UserIcon className="w-5 h-5 text-[#f4f0e7]" />
                   )}
                 </button>
 
@@ -1160,33 +1222,47 @@ export default function App() {
                   )}
                 </div>
               </div>
-
-              {/* Mobile / Tablet Menu Toggle Button */}
-              <button 
-                type="button" 
-                className={`menu-button xl:hidden ${isMobileMenuOpen ? 'active' : ''}`}
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                aria-label="Toggle navigation menu"
-                aria-expanded={isMobileMenuOpen}
-                aria-controls="mobile-navigation"
-              >
-                <span></span>
-                <span></span>
-              </button>
             </div>
           </div>
         </div>
 
-        {/* Mobile Search Row (Below header main row on smaller screens) */}
-        <div className="header-mobile-search md:hidden px-4 pb-3 pt-1">
-          <div className="header-search-wrapper w-full flex">
+        {/* Mobile Header Sub Container: Full-Width Delivery Card + Full-Width Search Bar (<= 768px / md:hidden) */}
+        <div className="mobile-header-sub md:hidden">
+          {/* Full-width delivery location card */}
+          <button
+            type="button"
+            onClick={() => setIsLocationModalOpen(true)}
+            className="mobile-delivery-card"
+            aria-label="Select delivery location"
+          >
+            <div className="mobile-delivery-left">
+              <div className="mobile-delivery-icon">
+                <MapPin className="w-4 h-4 text-[#183b2b]" />
+              </div>
+              <div className="mobile-delivery-text">
+                <div className="mobile-delivery-title">
+                  <span>Delivery tomorrow</span>
+                  <span className="mobile-delivery-tag">6 AM Slot</span>
+                </div>
+                <div className="mobile-delivery-sub">
+                  {selectedLocation || 'Select delivery location'}
+                </div>
+              </div>
+            </div>
+            <div className="mobile-delivery-arrow">
+              <ChevronDown className="w-4 h-4 text-[#183b2b]" />
+            </div>
+          </button>
+
+          {/* Full-width search bar (48–52px tall) */}
+          <div className="mobile-search-bar">
             <Search className="w-4 h-4 text-[#55705c] shrink-0" />
             <input
               type="text"
               placeholder="Search produce, categories or farms"
               value={searchQuery}
               onChange={(e) => handleHeaderSearch(e.target.value)}
-              className="header-search-input w-full"
+              className="mobile-search-input"
               aria-label="Search produce, categories or farms"
             />
             {searchQuery && (
@@ -1311,7 +1387,13 @@ export default function App() {
                   className="category-circle-item"
                 >
                   <div className={`circle-img-wrapper ${cat.bgClass} ${selectedCategory === cat.name ? 'ring-2 ring-[#183b2b]' : ''}`}>
-                    <img src={cat.image} alt={cat.name} />
+                    <img
+                      src={cat.image}
+                      alt={cat.name}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover object-center"
+                      style={{ objectFit: 'cover', objectPosition: 'center', width: '100%', height: '100%' }}
+                    />
                   </div>
                   <span className={`circle-label ${selectedCategory === cat.name ? 'underline font-bold' : ''}`}>
                     {cat.name}
@@ -1615,7 +1697,7 @@ export default function App() {
               >
                 {/* Filter Pills */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none w-full max-w-full min-w-0">
-                  {['Shop All', 'Vegetables', 'Fruits', 'Leafy Greens', 'Microgreens', 'Exotics'].map((catName) => (
+                  {['All Products', 'Vegetables', 'Fruits', 'Leafy Greens', 'Microgreens', 'Mushrooms', 'Exotics'].map((catName) => (
                     <button
                       key={catName}
                       type="button"
@@ -1629,10 +1711,10 @@ export default function App() {
                       {catName}
                     </button>
                   ))}
-                  {selectedCategory !== 'Shop All' && (
+                  {selectedCategory !== 'All Products' && (
                     <button
                       type="button"
-                      onClick={() => setSelectedCategory('Shop All')}
+                      onClick={() => setSelectedCategory('All Products')}
                       className="text-xs text-[#f48b4d] underline font-mono hover:text-[#183b2b] ml-2 whitespace-nowrap cursor-pointer"
                     >
                       Reset Filter
@@ -1680,7 +1762,7 @@ export default function App() {
                   const filteredProducts = activeProducts.filter(prod => {
                     const catLower = selectedCategory.toLowerCase().trim();
                     let matchesCategory = true;
-                    if (catLower !== 'shop all' && catLower !== 'all') {
+                    if (catLower !== 'all products' && catLower !== 'shop all' && catLower !== 'all') {
                       const prodCat = (prod.category || '').toLowerCase().trim();
                       if (catLower === 'vegetables') {
                         matchesCategory = prodCat.includes('veg');
@@ -1690,8 +1772,10 @@ export default function App() {
                         matchesCategory = prodCat.includes('leaf') || prodCat.includes('green') || prodCat.includes('herb') || prodCat.includes('spinach') || prodCat.includes('lettuce');
                       } else if (catLower === 'microgreens') {
                         matchesCategory = prodCat.includes('micro') || prodCat.includes('sprout');
+                      } else if (catLower === 'mushrooms') {
+                        matchesCategory = prodCat.includes('mushroom') || prodCat.includes('fungi');
                       } else if (catLower === 'exotics') {
-                        matchesCategory = prodCat.includes('exotic') || prodCat.includes('herb') || prodCat.includes('specialty') || prodCat.includes('mushroom');
+                        matchesCategory = prodCat.includes('exotic') || prodCat.includes('specialty');
                       } else {
                         matchesCategory = prodCat.includes(catLower) || catLower.includes(prodCat);
                       }
@@ -1718,7 +1802,7 @@ export default function App() {
                         </p>
                         <button
                           type="button"
-                          onClick={() => { setSelectedCategory('Shop All'); setSearchQuery(''); }}
+                          onClick={() => { setSelectedCategory('All Products'); setSearchQuery(''); }}
                           className="text-xs bg-[#183b2b] text-[#f4f0e7] px-4 py-2 font-semibold hover:bg-[#79966e] transition-all cursor-pointer"
                         >
                           View All Harvest

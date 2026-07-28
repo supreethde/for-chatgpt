@@ -1,12 +1,13 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
-import { db } from "./src/db/index.ts";
-import { users, inquiries } from "./src/db/schema.ts";
+import { db } from "./src/db/index";
+import { users, inquiries } from "./src/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
-import adminUploadRouter from "./src/routes/adminUpload.ts";
+import { requireAuth, AuthRequest } from "./src/middleware/auth";
+import adminUploadRouter from "./src/routes/adminUpload";
 
 async function startServer() {
   const app = express();
@@ -232,14 +233,16 @@ async function startServer() {
   });
 
   // Vite development / production serving handler
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), "dist");
+  const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(path.join(distPath, "index.html"));
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
@@ -250,5 +253,13 @@ async function startServer() {
     console.log(`Server running on port ${PORT}`);
   });
 }
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+});
 
 startServer();
