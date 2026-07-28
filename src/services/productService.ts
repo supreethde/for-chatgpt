@@ -63,7 +63,7 @@ export async function fetchProductsFromFirestore(): Promise<CatalogProduct[]> {
     const products: CatalogProduct[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      const rawVariants = data.variants || [];
+      const rawVariants = Array.isArray(data.variants) ? data.variants : [];
       const normalizedVariants = rawVariants.map((v: any, index: number) => {
         const sellingPrice = typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 0);
         const previousPrice = typeof v.previousPrice === 'number' ? v.previousPrice : (typeof v.mrp === 'number' ? v.mrp : undefined);
@@ -80,29 +80,37 @@ export async function fetchProductsFromFirestore(): Promise<CatalogProduct[]> {
         };
       });
 
-      const product: CatalogProduct = {
+      const product: CatalogProduct & Record<string, any> = {
         id: docSnap.id,
-        name: data.name || '',
+        name: data.name || 'Unnamed Produce',
         slug: data.slug || docSnap.id,
         category: data.category || 'Vegetables',
         scientificName: data.scientificName || '',
-        displayOrder: typeof data.displayOrder === 'number' ? data.displayOrder : (data.order || 100),
+        displayOrder: typeof data.displayOrder === 'number' ? data.displayOrder : (typeof data.order === 'number' ? data.order : 100),
         shortIntro: data.shortIntro || data.shortIntroduction || '',
-        highlights: data.highlights || data.keyHighlights || [],
-        description: data.description || '',
+        highlights: Array.isArray(data.highlights) ? data.highlights : (Array.isArray(data.keyHighlights) ? data.keyHighlights : []),
+        description: data.description || data.shortIntro || data.shortIntroduction || '',
         regionalNameKannada: data.regionalNameKannada || data.regionalNames?.kannada || '',
         regionalNameHindi: data.regionalNameHindi || data.regionalNames?.hindi || '',
-        images: data.images || [],
+        images: Array.isArray(data.images) ? data.images : [],
         variants: normalizedVariants,
         isActive: data.isActive ?? data.active ?? true,
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
         updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || new Date().toISOString()),
+        // Preserve optional fields if present in Firestore
+        priceRange: data.priceRange || undefined,
+        farmSource: data.farmSource || undefined,
+        weeklyTestStatus: data.weeklyTestStatus || undefined,
+        active: data.active ?? data.isActive ?? true,
       };
       products.push(product);
     });
 
+    products.sort((a, b) => (a.displayOrder ?? 100) - (b.displayOrder ?? 100));
+
     return products;
   } catch (error) {
+    console.error('Failed to fetch products from Firestore collection "products":', error);
     handleFirestoreError(error, OperationType.LIST, PRODUCTS_COLLECTION);
     return [];
   }

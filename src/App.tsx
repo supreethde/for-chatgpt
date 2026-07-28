@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, useRef, FormEvent, TransitionEvent } from 'react';
 import { 
   LogIn, 
   LogOut, 
@@ -10,36 +10,85 @@ import {
   FileText, 
   ClipboardList, 
   Send, 
-  Award,
   TrendingUp,
   MapPin,
   Calendar,
   Phone,
-  Sparkles,
-  Lock
+  Search,
+  ShoppingCart,
+  User as UserIcon,
+  X,
+  FileCheck2,
+  Lock,
+  AlertCircle,
+  ChevronDown,
+  Check,
+  Truck,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleAuthProvider } from './lib/firebase';
 import { AdminLogin } from './pages/AdminLogin';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { CatalogProduct } from './types';
+import { fetchProductsFromFirestore } from './services/productService';
 
-// Watercolor banner images
-import carrotsImg from './assets/images/1.jpg';
-import orangesImg from './assets/images/2.jpg';
-import spinachImg from './assets/images/3.jpg';
-import microgreensImg from './assets/images/4.jpg';
-import tomatoesImg from './assets/images/5.jpg';
+// Banner image imports
+import carrotsImg from './assets/images/1.png';
+import orangesImg from './assets/images/2.png';
+import spinachImg from './assets/images/3.png';
+import microgreensImg from './assets/images/4.png';
+import tomatoesImg from './assets/images/5.png';
 
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  priceRange: string;
-  farmSource: string;
-  weeklyTestStatus: string;
-  image: string;
-  description: string;
+// Category circle image imports
+import catShopAllImg from './assets/images/cat_shop_all_1784892173106.jpg';
+import catVegetablesImg from './assets/images/cat_vegetables_1784892188069.jpg';
+import catFruitsImg from './assets/images/cat_fruits_1784892197748.jpg';
+import catLeafyGreensImg from './assets/images/cat_leafy_greens_1784892558650.jpg';
+import catMicrogreensImg from './assets/images/cat_microgreens_1784892719194.jpg';
+import catExoticsImg from './assets/images/cat_exotics_1784892573055.jpg';
+
+function getProductPriceRange(prod: CatalogProduct & Record<string, any>): string {
+  if (prod.priceRange && typeof prod.priceRange === 'string') {
+    return prod.priceRange;
+  }
+  if (prod.variants && prod.variants.length > 0) {
+    const validPrices = prod.variants
+      .map(v => typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 0))
+      .filter(p => p > 0);
+    if (validPrices.length > 0) {
+      const minP = Math.min(...validPrices);
+      const maxP = Math.max(...validPrices);
+      const label = prod.variants[0]?.label ? ` / ${prod.variants[0].label}` : ' / kg';
+      if (minP === maxP) {
+        return `₹${minP}${label}`;
+      }
+      return `₹${minP} - ₹${maxP} / kg`;
+    }
+  }
+  return '₹50 - ₹80 / kg';
+}
+
+function getProductFarmSource(prod: CatalogProduct & Record<string, any>): string {
+  if (prod.farmSource && typeof prod.farmSource === 'string') {
+    return prod.farmSource;
+  }
+  if (prod.shortIntro) {
+    return prod.shortIntro.length > 65 ? prod.shortIntro.slice(0, 62) + '...' : prod.shortIntro;
+  }
+  return 'Karnataka Regenerative Partner Farm';
+}
+
+function getProductWeeklyTestStatus(prod: CatalogProduct & Record<string, any>): string {
+  if (prod.weeklyTestStatus && typeof prod.weeklyTestStatus === 'string') {
+    return prod.weeklyTestStatus;
+  }
+  return 'Passed - Nil Pesticides detected';
+}
+
+function getProductDescription(prod: CatalogProduct & Record<string, any>): string {
+  return prod.shortIntro || prod.description || 'Pesticide-free fresh farm harvest.';
 }
 
 interface LabReport {
@@ -64,45 +113,54 @@ interface Inquiry {
 }
 
 const bannerItems = [
+  { image: carrotsImg, title: "Organic Nantes Carrots", alt: "Sweet Carrots" },
+  { image: orangesImg, title: "Valencia Field Oranges", alt: "Coorg Oranges" },
+  { image: spinachImg, title: "Heirloom English Spinach", alt: "Crimson Spinach" },
+  { image: microgreensImg, title: "Rainbow Micro-Sprouts", alt: "Specialty Microgreens" },
+  { image: tomatoesImg, title: "Vined Cherry Tomatoes", alt: "Vine-Ripe Tomatoes" }
+];
+
+const categoryCards = [
+  { id: 'all', name: 'Shop All', image: catShopAllImg, bgClass: 'circle-bg-1' },
+  { id: 'vegetables', name: 'Vegetables', image: catVegetablesImg, bgClass: 'circle-bg-2' },
+  { id: 'fruits', name: 'Fruits', image: catFruitsImg, bgClass: 'circle-bg-3' },
+  { id: 'leafy-greens', name: 'Leafy Greens', image: catLeafyGreensImg, bgClass: 'circle-bg-4' },
+  { id: 'microgreens', name: 'Microgreens', image: catMicrogreensImg, bgClass: 'circle-bg-5' },
+  { id: 'exotics', name: 'Exotics', image: catExoticsImg, bgClass: 'circle-bg-6' },
+];
+
+const faqData = [
   {
-    image: carrotsImg,
-    title: "Organic Nantes Carrots",
-    source: "Hoskote Biodynamic Farm",
-    desc: "Sweet, soil-grown heirloom carrots harvested at dawn.",
-    color: "bg-[#fdfbf7]", // Warm cream
-    tag: "100% Organic"
+    q: "Who is The Soil Theory for?",
+    a: "We supply fruits and vegetables to fine-dine restaurants, hotels & resorts, cafes & bakeries, caterers & event organisers, retail shops, and cloud kitchens across Bengaluru and Karnataka."
   },
   {
-    image: orangesImg,
-    title: "Valencia Field Oranges",
-    source: "Devarayandurga Orchard",
-    desc: "Sun-ripened citrus, high brix level, zero wax coatings.",
-    color: "bg-[#f4f7f2]", // Light sage green
-    tag: "Wax-Free"
+    q: "What produce formats do you offer?",
+    a: "Five formats to match different kitchen needs and budgets: certified organic, organically grown, pesticide-free/hydroponic, microgreens & specialty, and imported exotics — each with different pricing and certification levels."
   },
   {
-    image: spinachImg,
-    title: "Heirloom English Spinach",
-    source: "Kanvapura Regenerative Farm",
-    desc: "Thick, mineral-rich dark leaves grown with compost.",
-    color: "bg-[#f4f7f2]", // Light sage green
-    tag: "Hydro-Washed"
+    q: "How do you guarantee produce is chemical- and pesticide-free?",
+    a: "We conduct pesticide-residue lab testing every week across organophosphates, carbamates, and pyrethroids. If a batch fails, it never ships. We share the residue test report with our partners, because trust should be visible, not just claimed."
   },
   {
-    image: microgreensImg,
-    title: "Rainbow Micro-Sprouts",
-    source: "Indiranagar Urban Canopy",
-    desc: "Superfood microgreens packed with intense nutrients.",
-    color: "bg-[#f4f7f2]", // Light sage green
-    tag: "Harvested Daily"
+    q: "What time is produce delivered?",
+    a: "Standard kitchen delivery is before 6 AM daily, timed so your team can prep with fresh produce from the moment service starts. Orders placed by around midday are harvested, quality-checked, and delivered the same overnight cycle."
   },
   {
-    image: tomatoesImg,
-    title: "Vined Cherry Tomatoes",
-    source: "Kengeri Greenhouse Soil",
-    desc: "Acid-balanced, intensely sweet tomatoes on vine.",
-    color: "bg-[#fdfbf7]", // Warm cream
-    tag: "Residue-Free"
+    q: "How is pricing structured?",
+    a: "Pricing depends on the produce format and your volume — for example, certified organic runs roughly ₹60–70/kg, while pesticide-free ranges around ₹45–50/kg. Use our produce cost calculator on the homepage for an estimate, or request a sample invoice tailored to your actual menu."
+  },
+  {
+    q: "What if I'm not happy with a delivery?",
+    a: "Our QA policy is simple: if a vegetable disappoints you, we replace it — free, no forms required. Just let us know."
+  },
+  {
+    q: "Do you supply fruits and vegetables suppliers for restaurants outside Bengaluru?",
+    a: "Right now we focus on restaurants, hotels, and food businesses within Bengaluru and surrounding parts of Karnataka, where our farm network and delivery timelines are strongest."
+  },
+  {
+    q: "How do I get started?",
+    a: "Reach out via phone (+91 98805 85292), email (hello@soiltheory.in), or WhatsApp — tell us a bit about your kitchen and expected volumes, and we'll put together a sample invoice."
   }
 ];
 
@@ -133,8 +191,104 @@ const getNormalizedPath = (): string => {
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(getNormalizedPath());
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | any>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // UI Navigation & Dropdown State
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Delivery Location State
+  const [selectedLocation, setSelectedLocation] = useState<string>('Guest Outlet: Select delivery location');
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
+  const [customPincode, setCustomPincode] = useState<string>('');
+
+  // Workspace Tabs State
+  const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Shop All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+
+  // Handle header search typing with smooth scroll to catalogue
+  const handleHeaderSearch = (val: string) => {
+    setSearchQuery(val);
+    if (val.trim().length > 0) {
+      setActiveTab('catalog');
+      const el = document.getElementById('catalog-workspace') || document.getElementById('produce');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  // Data State
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState<boolean>(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [reports, setReports] = useState<LabReport[]>([]);
+  const [myInquiries, setMyInquiries] = useState<Inquiry[]>([]);
+
+  // Estimator State
+  const [dailyRequirementKg, setDailyRequirementKg] = useState<number>(50);
+  const [estimateQuantities, setEstimateQuantities] = useState<Record<string, number>>({});
+
+  // Inquiry Form State
+  const [restaurantName, setRestaurantName] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
+  const [submittingInquiry, setSubmittingInquiry] = useState(false);
+  const [inquirySuccess, setInquirySuccess] = useState(false);
+
+  // Moving Banner Carousel Index & Responsive & Drag/Interaction state
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [bannerViewportWidth, setBannerViewportWidth] = useState<number>(0);
+  const [bannerIndex, setBannerIndex] = useState(5); // Start at middle set (Set 1)
+  const [isTransitioning, setIsTransitioning] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const [isMobile, setIsMobile] = useState<boolean>(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  const dragStartXRef = useRef<number>(0);
+  const dragStartYRef = useRef<number>(0);
+  const activePointerIdRef = useRef<number | null>(null);
+  const isHorizontalDragRef = useRef<boolean | null>(null);
+  const wheelAccumulatorRef = useRef<number>(0);
+  const wheelLockRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (viewportRef.current) {
+        setBannerViewportWidth(viewportRef.current.clientWidth);
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && viewportRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        if (viewportRef.current) {
+          setBannerViewportWidth(viewportRef.current.clientWidth);
+        }
+      });
+      resizeObserver.observe(viewportRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleLocationChange = () => {
@@ -152,6 +306,184 @@ export default function App() {
     };
   }, []);
 
+  // Lock scroll and listen for Escape key when mobile menu drawer is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMenuOpen]);
+
+  // Autoplay timer: Pauses when dragging, hovered, or focused
+  useEffect(() => {
+    if (isDragging || isHovered || isFocused) return;
+
+    const interval = setInterval(() => {
+      setIsTransitioning(true);
+      setBannerIndex((prev) => prev + 1);
+    }, 4500);
+
+    return () => clearInterval(interval);
+  }, [isDragging, isHovered, isFocused]);
+
+  useEffect(() => {
+    if (!isTransitioning) {
+      const timer = setTimeout(() => {
+        setIsTransitioning(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isTransitioning]);
+
+  const handleBannerTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.propertyName !== 'transform') return;
+
+    if (bannerIndex >= 10) {
+      setIsTransitioning(false);
+      setBannerIndex(5 + (bannerIndex % 5));
+    } else if (bannerIndex < 5) {
+      setIsTransitioning(false);
+      setBannerIndex(5 + (((bannerIndex % 5) + 5) % 5));
+    }
+  };
+
+  const DRAG_THRESHOLD = 50; // 50px drag threshold to change slide
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    dragStartXRef.current = e.clientX;
+    dragStartYRef.current = e.clientY;
+    activePointerIdRef.current = e.pointerId;
+    isHorizontalDragRef.current = null;
+    setDragOffset(0);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== e.pointerId) return;
+
+    const deltaX = e.clientX - dragStartXRef.current;
+    const deltaY = e.clientY - dragStartYRef.current;
+
+    if (isHorizontalDragRef.current === null) {
+      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          isHorizontalDragRef.current = true;
+          setIsDragging(true);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        } else {
+          isHorizontalDragRef.current = false;
+        }
+      }
+    }
+
+    if (isHorizontalDragRef.current === true) {
+      setDragOffset(deltaX);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== e.pointerId) return;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    if (isHorizontalDragRef.current === true && isDragging) {
+      const deltaX = e.clientX - dragStartXRef.current;
+      setIsTransitioning(true);
+
+      if (deltaX < -DRAG_THRESHOLD) {
+        setBannerIndex((prev) => prev + 1);
+      } else if (deltaX > DRAG_THRESHOLD) {
+        setBannerIndex((prev) => prev - 1);
+      }
+    }
+
+    setIsDragging(false);
+    setDragOffset(0);
+    isHorizontalDragRef.current = null;
+    activePointerIdRef.current = null;
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current === e.pointerId) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      setIsDragging(false);
+      setDragOffset(0);
+      isHorizontalDragRef.current = null;
+      activePointerIdRef.current = null;
+    }
+  };
+
+  const WHEEL_THRESHOLD = 40; // 40px threshold for horizontal scroll/wheel gesture
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const isHorizontalWheel = Math.abs(e.deltaX) > Math.abs(e.deltaY) || (e.shiftKey && Math.abs(e.deltaY) > 0);
+
+    if (!isHorizontalWheel) {
+      // Allow vertical page scrolling normally
+      return;
+    }
+
+    if (wheelLockRef.current) return;
+
+    const delta = e.shiftKey && Math.abs(e.deltaY) > 0 ? e.deltaY : e.deltaX;
+    wheelAccumulatorRef.current += delta;
+
+    if (Math.abs(wheelAccumulatorRef.current) >= WHEEL_THRESHOLD) {
+      wheelLockRef.current = true;
+      setIsTransitioning(true);
+
+      if (wheelAccumulatorRef.current > 0) {
+        setBannerIndex((prev) => prev + 1);
+      } else {
+        setBannerIndex((prev) => prev - 1);
+      }
+
+      wheelAccumulatorRef.current = 0;
+
+      setTimeout(() => {
+        wheelLockRef.current = false;
+      }, 600);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setIsTransitioning(true);
+      setBannerIndex((prev) => prev - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setIsTransitioning(true);
+      setBannerIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleDotClick = (idx: number) => {
+    setIsTransitioning(true);
+    setBannerIndex(5 + idx);
+  };
+
   const navigateTo = (path: string) => {
     try {
       window.history.pushState({}, '', path);
@@ -166,31 +498,6 @@ export default function App() {
       setCurrentPath(norm);
     }
   };
-  const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
-  
-  // Data State
-  const [products, setProducts] = useState<Product[]>([]);
-  const [reports, setReports] = useState<LabReport[]>([]);
-  const [myInquiries, setMyInquiries] = useState<Inquiry[]>([]);
-  
-  // Estimator State
-  const [estimateQuantities, setEstimateQuantities] = useState<Record<string, number>>({});
-  
-  // Inquiry Form State
-  const [restaurantName, setRestaurantName] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [submittingInquiry, setSubmittingInquiry] = useState(false);
-  const [inquirySuccess, setInquirySuccess] = useState(false);
-  
-  // Slide state for premium interactive showcase banner
-  const [activeSlide, setActiveSlide] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlide((prev) => (prev + 1) % bannerItems.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Sync session with Express backend
   const syncUserSession = async (currentUser: User) => {
@@ -235,13 +542,38 @@ export default function App() {
 
   // Handle Login
   const handleLogin = async () => {
+    setAuthError(null);
     try {
       setLoading(true);
       await signInWithPopup(auth, googleAuthProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Google Sign-In failed:', error);
+      let message = 'Google Sign-In failed. Please try again.';
+      if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('auth/unauthorized-domain')) {
+        message = `Google Sign-In requires adding "${typeof window !== 'undefined' ? window.location.hostname : 'this domain'}" to Authorized Domains in your Firebase Console (Authentication > Settings > Authorized Domains).`;
+      } else if (error?.code === 'auth/popup-blocked') {
+        message = 'The sign-in popup was blocked by your browser. Please allow popups for this site.';
+      } else if (error?.code === 'auth/popup-closed-by-user') {
+        message = 'The sign-in popup was closed before completion.';
+      } else if (error?.message) {
+        message = error.message;
+      }
+      setAuthError(message);
+    } finally {
       setLoading(false);
     }
+  };
+
+  const handleDemoLogin = () => {
+    const demoUser = {
+      uid: 'demo-partner-kitchen-1',
+      displayName: 'Bengaluru Chef Partner (Demo)',
+      email: 'chef@soiltheory.in',
+      photoURL: null,
+      getIdToken: async () => 'demo-token-123'
+    };
+    setUser(demoUser);
+    setAuthError(null);
   };
 
   // Handle Logout
@@ -256,20 +588,39 @@ export default function App() {
     }
   };
 
+  const loadProductsFromFirestore = async () => {
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const data = await fetchProductsFromFirestore();
+      console.log(`[Produce Catalog] Loaded ${data.length} products from Firestore collection "products".`);
+      setProducts(data);
+    } catch (err: any) {
+      console.error('[Produce Catalog Error] Failed to load products from Firestore "products" collection:', err);
+      let errorMsg = 'Unable to connect to produce catalog database. Please check your network or try refreshing.';
+      if (err instanceof Error && err.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed.error) errorMsg = `Database error: ${parsed.error}`;
+        } catch {
+          errorMsg = err.message;
+        }
+      }
+      setProductsError(errorMsg);
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
   // Load Initial Data
   useEffect(() => {
-    // 1. Fetch static products and reports
-    fetch('/api/products')
-      .then(res => res.json())
-      .then(data => setProducts(data))
-      .catch(err => console.error('Error fetching products:', err));
+    loadProductsFromFirestore();
 
     fetch('/api/reports')
       .then(res => res.json())
       .then(data => setReports(data))
       .catch(err => console.error('Error fetching reports:', err));
 
-    // 2. Listen to Auth State
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -285,41 +636,53 @@ export default function App() {
   // Calculate dynamic weekly estimate
   const getEstimatedTotal = () => {
     let total = 0;
-    products.forEach((prod) => {
-      const qty = estimateQuantities[prod.id] || 0;
-      if (qty > 0) {
-        // Parse a standard baseline price from priceRange (e.g. "₹90 - ₹110 / kg" -> base ₹95)
-        let price = 100;
-        if (prod.id === 'p1') price = 95;
-        if (prod.id === 'p2') price = 45;
-        if (prod.id === 'p3') price = 70;
-        if (prod.id === 'p4') price = 190;
-        if (prod.id === 'p5') price = 130;
-        if (prod.id === 'p6') price = 50;
+    const hasCustomQty = Object.values(estimateQuantities).some((q: number) => q > 0);
+    
+    if (hasCustomQty) {
+      products.forEach((prod) => {
+        const qty = estimateQuantities[prod.id] || 0;
+        if (qty > 0) {
+          let price = 68;
+          if (prod.variants && prod.variants.length > 0) {
+            const vPrice = typeof prod.variants[0].sellingPrice === 'number'
+              ? prod.variants[0].sellingPrice
+              : (typeof prod.variants[0].price === 'number' ? prod.variants[0].price : 68);
+            if (vPrice > 0) price = vPrice;
+          } else if ((prod as any).priceRange) {
+            const match = String((prod as any).priceRange).match(/₹(\d+)/);
+            if (match && match[1]) {
+              price = parseInt(match[1], 10);
+            }
+          }
 
-        // Apply volume discount: quantities over 50kg get a 10% discount
-        if (qty >= 50) {
-          price = price * 0.9;
-        } else if (qty >= 20) {
-          price = price * 0.95;
+          if (qty >= 50) {
+            price = price * 0.9;
+          } else if (qty >= 20) {
+            price = price * 0.95;
+          }
+
+          total += price * qty;
         }
+      });
+      return Math.round(total);
+    }
 
-        total += price * qty;
-      }
-    });
-    return Math.round(total);
+    // Default monthly calculation based on slider
+    return Math.round(dailyRequirementKg * 30 * 68);
   };
 
   // Submit Inquiry Form
   const handleSubmitInquiry = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      handleLogin();
+      return;
+    }
     
     setSubmittingInquiry(true);
     try {
       const token = await user.getIdToken();
       
-      // Prepare items list
       const itemsList = products
         .map((p) => {
           const qty = estimateQuantities[p.id] || 0;
@@ -336,7 +699,7 @@ export default function App() {
         body: JSON.stringify({
           restaurantName,
           contactNumber,
-          items: itemsList.length > 0 ? itemsList.join(', ') : 'General Restaurant Onboarding Inquiry',
+          items: itemsList.length > 0 ? itemsList.join(', ') : `Daily Produce Requirement: ${dailyRequirementKg} kg/day`,
           estimatedCost: getEstimatedTotal()
         })
       });
@@ -356,6 +719,9 @@ export default function App() {
     }
   };
 
+  // Cart Items Count
+  const cartItemCount = Object.values(estimateQuantities).filter((q: number) => q > 0).length;
+
   const normalizedPath = currentPath;
 
   if (normalizedPath === '/admin/login') {
@@ -367,514 +733,1113 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-paper flex flex-col font-sans selection:bg-brand-lime selection:text-brand-ink">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4f0e7] text-[#183b2b] flex flex-col font-sans selection:bg-[#c9dc74] selection:text-[#183b2b]">
       
-      {/* Top Banner Announcement */}
-      <div className="bg-brand-ink text-white text-xs py-2 px-6 font-mono tracking-wider flex items-center justify-center gap-2">
-        <span className="w-1.5 h-1.5 bg-brand-lime rounded-full animate-pulse"></span>
-        WEEKLY TOXICOLOGY & PESTICIDE LAB REPORTS UPDATED • JULY 2026
+      {/* 1. Announcement Bar */}
+      <div className="announcement">
+        <span className="dot"></span> 
+        <span>Now partnering with Bengaluru restaurants</span> 
+        <a href="#contact">Enquire today</a>
       </div>
 
-      {/* Temporary Open Admin Login Button directly below top announcement bar */}
-      <div className="bg-emerald-800 text-white p-4 text-center border-b-2 border-emerald-950 shadow-md">
-        <button
-          type="button"
-          onClick={() => setCurrentPath('/admin/login')}
-          className="bg-brand-lime text-brand-ink hover:bg-white text-lg font-black px-8 py-3.5 rounded-md shadow-xl cursor-pointer tracking-wider uppercase transition-all transform hover:scale-105 inline-flex items-center justify-center gap-2"
-          id="open-admin-login-main-btn"
-        >
-          <Lock className="w-5 h-5" />
-          OPEN ADMIN LOGIN
-        </button>
-      </div>
-
-      {/* Main Elegant Header */}
-      <header className="border-b border-brand-cream/60 py-5 px-6 max-w-7xl w-full mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Sprout className="w-8 h-8 text-brand-moss" />
-          <a href="/" className="font-serif text-2xl font-bold tracking-tight text-brand-ink">
-            The Soil Theory <strong className="text-brand-moss italic font-normal">in Bengaluru</strong>
-          </a>
-        </div>
-
-        {/* Auth / Partner Portal Control */}
-        <div className="flex items-center gap-4">
-          {loading ? (
-            <Loader2 className="w-5 h-5 animate-spin text-brand-moss" />
-          ) : user ? (
-            <div className="flex items-center gap-3">
-              <div className="hidden md:flex flex-col text-right">
-                <span className="text-xs font-semibold font-mono text-brand-moss">RESTAURANT PARTNER</span>
-                <span className="text-sm font-medium text-brand-ink">{user.displayName}</span>
-              </div>
-              {user.photoURL && (
-                <img 
-                  src={user.photoURL} 
-                  alt={user.displayName || 'Avatar'} 
-                  className="w-9 h-9 rounded-full border border-brand-moss"
-                  referrerPolicy="no-referrer"
-                />
-              )}
-              <button 
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-brand-ink/20 hover:border-brand-ink hover:bg-brand-ink/5 text-xs font-medium transition-all"
+      {/* Auth Error Modal */}
+      <AnimatePresence>
+        {authError && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-stone-200 text-stone-800 relative space-y-4"
+            >
+              <button
+                type="button"
+                onClick={() => setAuthError(null)}
+                className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 transition-colors"
+                aria-label="Close"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                Sign Out
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-stone-900">Partner Authentication Notice</h3>
+                  <p className="text-xs text-stone-500">Google Sign-In configuration</p>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200/60 rounded-xl text-xs text-stone-700 leading-relaxed">
+                {authError}
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  className="flex-1 bg-[#183b2b] hover:bg-[#25543e] text-[#f4f0e7] font-medium text-xs py-2.5 px-4 rounded-xl transition-all text-center cursor-pointer"
+                >
+                  Sign In with Demo Partner Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthError(null)}
+                  className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium text-xs py-2.5 px-4 rounded-xl transition-all text-center cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Location Selector Modal */}
+      <AnimatePresence>
+        {isLocationModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            onClick={() => setIsLocationModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-stone-200 text-stone-800 relative space-y-4"
+            >
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(false)}
+                className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 transition-colors p-1 rounded-lg hover:bg-stone-100"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#183b2b]/10 text-[#183b2b] border border-[#183b2b]/20">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-[#183b2b]">Select Delivery Location</h3>
+                  <p className="text-xs text-stone-500">Scheduled 6 AM kitchen deliveries across Bengaluru</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                {[
+                  { name: 'Koramangala Partner Kitchen', pin: '560034' },
+                  { name: 'Indiranagar Central Kitchen', pin: '560038' },
+                  { name: 'Whitefield Central Outlet', pin: '560066' },
+                  { name: 'HSR Layout Dark Kitchen', pin: '560102' },
+                  { name: 'M.G. Road Hotel Hub', pin: '560001' }
+                ].map((loc) => {
+                  const locString = `${loc.name} (${loc.pin})`;
+                  const isSelected = selectedLocation === locString;
+                  return (
+                    <button
+                      key={loc.pin}
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocation(locString);
+                        setIsLocationModalOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-[#183b2b] bg-[#183b2b]/5 font-semibold text-[#183b2b]'
+                          : 'border-stone-200 hover:border-[#183b2b]/40 hover:bg-stone-50 text-stone-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <MapPin className={`w-4 h-4 ${isSelected ? 'text-[#183b2b]' : 'text-stone-400'}`} />
+                        <div>
+                          <div className="font-medium text-stone-900">{loc.name}</div>
+                          <div className="text-[10px] text-stone-500">Pincode: {loc.pin} • Next 6 AM Slot</div>
+                        </div>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-[#183b2b]" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 border-t border-stone-200 space-y-2">
+                <label className="text-xs font-medium text-stone-700 block">Or enter custom pincode / landmark</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. 560008 or Indiranagar 100ft Rd"
+                    value={customPincode}
+                    onChange={(e) => setCustomPincode(e.target.value)}
+                    className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded-xl focus:outline-none focus:border-[#183b2b]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customPincode.trim()) {
+                        setSelectedLocation(`Outlet: ${customPincode.trim()}`);
+                        setIsLocationModalOpen(false);
+                        setCustomPincode('');
+                      }
+                    }}
+                    className="bg-[#183b2b] text-[#f4f0e7] px-4 py-2 text-xs font-semibold rounded-xl hover:bg-[#25543e] transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 2. Site Header */}
+      <header className="site-header-container">
+        {/* Main Header Row */}
+        <div className="site-header-main">
+          {/* Left: Logo & Delivery Location Block */}
+          <div className="header-left">
+            <a className="wordmark" href="/">
+              <span>THE SOIL</span>
+              <strong>THEORY</strong>
+              <i></i>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => setIsLocationModalOpen(true)}
+              className="header-location-block"
+              aria-label="Select delivery location"
+            >
+              <MapPin className="w-4 h-4 text-[#183b2b] shrink-0" />
+              <div className="location-info">
+                <span className="text-[#183b2b] font-bold text-xs flex items-center gap-1">
+                  Delivery tomorrow
+                </span>
+                <span className="text-[11px] text-[#55705c] truncate max-w-[140px] xl:max-w-[190px] flex items-center gap-0.5">
+                  {selectedLocation}
+                  <ChevronDown className="w-3 h-3 text-[#183b2b] shrink-0" />
+                </span>
+              </div>
+            </button>
+          </div>
+
+          {/* Center: Desktop Wide Search Field */}
+          <div className="header-search-container hidden md:flex">
+            <div className="header-search-wrapper">
+              <Search className="w-4 h-4 text-[#55705c] shrink-0" />
+              <input
+                type="text"
+                placeholder="Search produce, categories or farms"
+                value={searchQuery}
+                onChange={(e) => handleHeaderSearch(e.target.value)}
+                className="header-search-input"
+                aria-label="Search produce, categories or farms"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="clear-search-btn"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right Group: Text Links + Actions (Cart, Profile, Mobile Menu Toggle) */}
+          <div className="header-right-group">
+            {/* Inline Desktop Nav Links */}
+            <nav className="header-inline-nav hidden xl:flex" aria-label="Main Navigation">
+              <a href="#why">Why Soil Theory</a>
+              <a href="#sourcing">How it works</a>
+              <a href="#faq">FAQ</a>
+            </nav>
+
+            <div className="header-actions">
+              {/* Harvest Cart Dropdown */}
+              <div className="nav-cart-wrapper">
+                <button 
+                  type="button" 
+                  className="nav-icon-btn" 
+                  onClick={() => {
+                    setIsCartOpen(!isCartOpen);
+                    setIsProfileOpen(false);
+                  }}
+                  aria-label="Harvest Cart"
+                >
+                  <ShoppingCart className="w-5 h-5 text-[#183b2b]" />
+                  {cartItemCount > 0 && <span className="cart-badge">{cartItemCount}</span>}
+                </button>
+
+                <div className={`cart-dropdown ${isCartOpen ? 'is-open' : ''}`}>
+                  <div className="cart-dropdown-header">
+                    <h4>Harvest Inquiry Cart</h4>
+                    <span className="cart-item-count">{cartItemCount} items selected</span>
+                  </div>
+                  <div className="cart-dropdown-body">
+                    {cartItemCount === 0 ? (
+                      <p className="text-xs text-[#55705c] py-4 text-center">
+                        Your inquiry cart is empty. Click "+ Add 10kg" on any produce item below to add it.
+                      </p>
+                    ) : (
+                      products.map((prod) => {
+                        const qty = estimateQuantities[prod.id] || 0;
+                        if (qty <= 0) return null;
+                        return (
+                          <div key={prod.id} className="cart-item">
+                            <div className="cart-item-details">
+                              <span className="cart-item-title">{prod.name}</span>
+                              <span className="cart-item-subtitle">{qty} kg • {getProductPriceRange(prod)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEstimateQuantities(prev => ({ ...prev, [prod.id]: 0 }))}
+                              className="text-xs text-red-600 font-bold hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="cart-dropdown-footer">
+                    <div className="cart-total-row">
+                      <span>Estimated Total</span>
+                      <strong>₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
+                    </div>
+                    <a 
+                      href="#contact" 
+                      onClick={() => {
+                        setIsCartOpen(false);
+                        setActiveTab('inquiries');
+                      }}
+                      className="button button-dark cart-checkout-btn"
+                    >
+                      Proceed to Inquiry <span>→</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* User Profile / Partner Dropdown (Always accessible via Profile Icon) */}
+              <div className="nav-profile-wrapper">
+                <button 
+                  type="button" 
+                  className="nav-icon-btn nav-profile-btn"
+                  onClick={() => {
+                    setIsProfileOpen(!isProfileOpen);
+                    setIsCartOpen(false);
+                  }}
+                  aria-label="User Profile"
+                >
+                  {user?.photoURL ? (
+                    <img src={user.photoURL} alt="Avatar" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                  ) : user ? (
+                    <span className="profile-avatar">{user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}</span>
+                  ) : (
+                    <UserIcon className="w-5 h-5 text-[#183b2b]" />
+                  )}
+                </button>
+
+                <div className={`profile-dropdown ${isProfileOpen ? 'is-open' : ''}`}>
+                  {user ? (
+                    <>
+                      <div className="profile-dropdown-header">
+                        <div className="profile-avatar-large">
+                          {user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}
+                        </div>
+                        <div className="profile-user-info">
+                          <strong>{user.displayName || 'Chef Partner'}</strong>
+                          <small>{user.email}</small>
+                        </div>
+                      </div>
+                      <div className="profile-dropdown-menu">
+                        <button 
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            setActiveTab('inquiries');
+                            const el = document.getElementById('catalog-workspace');
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                          }} 
+                          className="profile-menu-item w-full text-left"
+                        >
+                          <ClipboardList className="w-4 h-4 text-[#183b2b]" />
+                          My Orders & Deliveries
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            setActiveTab('reports');
+                            const el = document.getElementById('catalog-workspace');
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                          }} 
+                          className="profile-menu-item w-full text-left"
+                        >
+                          <FileCheck2 className="w-4 h-4 text-[#183b2b]" />
+                          Lab Test Reports & Quality
+                        </button>
+                        <a
+                          href="#contact"
+                          onClick={() => setIsProfileOpen(false)}
+                          className="profile-menu-item w-full text-left flex items-center gap-2"
+                        >
+                          <MessageSquare className="w-4 h-4 text-[#183b2b]" />
+                          Talk to us <span>↗</span>
+                        </a>
+                        <div className="profile-dropdown-divider"></div>
+                        <button 
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            handleLogout();
+                          }} 
+                          className="profile-menu-item logout-link w-full text-left"
+                        >
+                          <LogOut className="w-4 h-4 text-red-700" />
+                          Switch Account / Log Out
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="profile-dropdown-header">
+                        <div className="profile-avatar-large bg-[#183b2b] text-[#f4f0e7] flex items-center justify-center font-bold">
+                          ST
+                        </div>
+                        <div className="profile-user-info">
+                          <strong>Partner Portal</strong>
+                          <small>Chef & Hospitality Partner</small>
+                        </div>
+                      </div>
+                      <div className="profile-dropdown-menu">
+                        <button
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            handleLogin();
+                          }}
+                          className="profile-menu-item w-full text-left font-semibold text-[#183b2b] flex items-center gap-2"
+                        >
+                          <LogIn className="w-4 h-4 text-[#183b2b]" />
+                          Partner Sign-In
+                        </button>
+                        <a
+                          href="#contact"
+                          onClick={() => setIsProfileOpen(false)}
+                          className="profile-menu-item w-full text-left flex items-center gap-2"
+                        >
+                          <MessageSquare className="w-4 h-4 text-[#183b2b]" />
+                          Talk to us <span>↗</span>
+                        </a>
+                        <div className="profile-dropdown-divider"></div>
+                        <button
+                          onClick={() => {
+                            setIsProfileOpen(false);
+                            navigateTo('/admin/login');
+                          }}
+                          className="profile-menu-item w-full text-left text-xs font-mono text-[#55705c] flex items-center gap-1.5"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-[#79966e]" />
+                          Admin Portal Login
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Mobile / Tablet Menu Toggle Button */}
+              <button 
+                type="button" 
+                className={`menu-button xl:hidden ${isMobileMenuOpen ? 'active' : ''}`}
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                aria-label="Toggle navigation menu"
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="mobile-navigation"
+              >
+                <span></span>
+                <span></span>
               </button>
             </div>
-          ) : (
-            <button 
-              onClick={handleLogin}
-              className="flex items-center gap-2 bg-brand-ink text-brand-paper px-4 py-2 hover:bg-brand-moss transition-all text-sm font-semibold rounded-none shadow-md shadow-brand-ink/10"
-            >
-              <LogIn className="w-4 h-4 text-brand-lime" />
-              Partner Sign-In
-            </button>
-          )}
+          </div>
+        </div>
+
+        {/* Mobile Search Row (Below header main row on smaller screens) */}
+        <div className="header-mobile-search md:hidden px-4 pb-3 pt-1">
+          <div className="header-search-wrapper w-full flex">
+            <Search className="w-4 h-4 text-[#55705c] shrink-0" />
+            <input
+              type="text"
+              placeholder="Search produce, categories or farms"
+              value={searchQuery}
+              onChange={(e) => handleHeaderSearch(e.target.value)}
+              className="header-search-input w-full"
+              aria-label="Search produce, categories or farms"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="clear-search-btn"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Hero Header Presentation */}
-      <section className="bg-gradient-to-b from-brand-paper to-[#ece7db]/20 py-12 px-6 border-b border-brand-cream/35">
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-12">
-          {/* Left Column: Brand Content */}
-          <div className="w-full lg:w-7/12 flex flex-col justify-between">
-            <div>
-              <span className="text-xs tracking-widest font-mono text-brand-moss font-bold uppercase block mb-3">
-                Traceable • Lab-Tested Weekly • Delivered Fresh before 6 AM
-              </span>
-              <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-brand-ink leading-[1.05] mb-6">
-                Chemical-Free Produce for <i className="italic font-normal">Bengaluru's Best</i> Kitchens.
-              </h1>
-              <p className="text-brand-moss text-base md:text-lg font-medium leading-relaxed max-w-2xl mb-8">
-                Partnering directly with Karnataka's regenerative farms to supply leading restaurants and hotels. Certified clean, traceable, and harvested fresh daily.
-              </p>
+      {/* Mobile Menu Drawer & Backdrop Overlay */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.nav
+              id="mobile-navigation"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-[320px] bg-[#f4f0e7] z-50 p-6 flex flex-col justify-between shadow-2xl border-l border-[#183b2b]/20 xl:hidden overflow-y-auto"
+              role="navigation"
+              aria-label="Mobile Navigation"
+            >
+              <div className="flex flex-col gap-6">
+                <div className="flex items-center justify-between pb-4 border-b border-[#183b2b]/15">
+                  <a 
+                    className="wordmark" 
+                    href="/" 
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span>THE SOIL</span>
+                    <strong>THEORY</strong>
+                    <i></i>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-10 h-10 flex items-center justify-center rounded-full bg-[#183b2b]/10 text-[#183b2b] hover:bg-[#183b2b]/20 transition-colors"
+                    aria-label="Close menu"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <a
+                    href="#why"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
+                  >
+                    Why Soil Theory
+                  </a>
+                  <a
+                    href="#sourcing"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
+                  >
+                    How it works
+                  </a>
+                  <a
+                    href="#faq"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
+                  >
+                    FAQ
+                  </a>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-[#183b2b]/15 flex flex-col gap-3">
+                <a
+                  href="#contact"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full bg-[#183b2b] text-[#f4f0e7] font-semibold text-center py-3.5 px-5 rounded-xl text-sm transition-all hover:bg-[#25543e] active:scale-[0.98] min-h-[44px] flex items-center justify-center gap-2 shadow-sm"
+                >
+                  Talk to us <span>↗</span>
+                </a>
+              </div>
+            </motion.nav>
+          </>
+        )}
+      </AnimatePresence>
+
+      <main id="top" className="w-full max-w-full overflow-x-hidden">
+        {/* 3. Moving Banners & Category Circles Section */}
+        <section className="moving-banners-section" id="produce">
+          <div className="moving-banners-header">
+            <div className="header-left-title">
+              <h2 className="chef-heading">
+                Chef Approved Freshness<br />Directly From Our Farm
+              </h2>
             </div>
             
-            {/* Quality Seals Badges */}
-            <div className="flex flex-wrap gap-4 mt-2">
-              <div className="bg-brand-cream/30 p-4 border border-brand-cream flex items-center gap-3 rounded-none shadow-sm backdrop-blur-xs">
-                <Award className="w-10 h-10 text-brand-orange shrink-0" />
-                <div>
-                  <h4 className="font-serif font-bold text-sm">100% Traceable</h4>
-                  <p className="text-xs text-brand-moss">Scan-to-farm transparent logs</p>
-                </div>
-              </div>
-              <div className="bg-brand-cream/30 p-4 border border-brand-cream flex items-center gap-3 rounded-none shadow-sm backdrop-blur-xs">
-                <CheckCircle2 className="w-10 h-10 text-brand-moss shrink-0" />
-                <div>
-                  <h4 className="font-serif font-bold text-sm">Weekly Lab-Tested</h4>
-                  <p className="text-xs text-brand-moss">Tested for 148+ pesticides</p>
-                </div>
-              </div>
+            {/* Category Circles Row */}
+            <div className="header-right-categories">
+              {categoryCards.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat.name);
+                    setActiveTab('catalog');
+                    const el = document.getElementById('catalog-workspace');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="category-circle-item"
+                >
+                  <div className={`circle-img-wrapper ${cat.bgClass} ${selectedCategory === cat.name ? 'ring-2 ring-[#183b2b]' : ''}`}>
+                    <img src={cat.image} alt={cat.name} />
+                  </div>
+                  <span className={`circle-label ${selectedCategory === cat.name ? 'underline font-bold' : ''}`}>
+                    {cat.name}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Right Column: Premium Active Interactive Banner Showcase */}
-          <div className="w-full lg:w-5/12">
-            <div className="relative bg-[#fdfbf7] p-4 md:p-6 border border-brand-cream shadow-xl flex flex-col">
-              {/* Artistic Picture Frame Border */}
-              <div className="absolute inset-2 border border-brand-cream/40 pointer-events-none z-10"></div>
-              
-              {/* Slide Image Container with AnimatePresence */}
-              <div className="relative h-64 md:h-72 w-full overflow-hidden bg-brand-cream/10 border border-brand-cream/40 mb-4 flex items-center justify-center">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeSlide}
-                    initial={{ opacity: 0, scale: 1.02 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
-                    className="absolute inset-0 w-full h-full flex items-center justify-center"
+          {/* Banner Carousel */}
+          <div 
+            ref={viewportRef}
+            className="moving-banners-container"
+            tabIndex={0}
+            role="region"
+            aria-label="Promotional Banners Carousel"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onKeyDown={handleKeyDown}
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+          >
+            <div 
+              className={`moving-banners-track ${isDragging ? 'is-dragging' : ''}`}
+              style={{
+                transform: isMobile && bannerViewportWidth > 0
+                  ? `translate3d(${-(bannerIndex * bannerViewportWidth) + dragOffset}px, 0, 0)`
+                  : `translateX(calc(-1 * ${bannerIndex} * ((100cqw - 2 * clamp(22px, 5vw, 76px) + 24px) / 2) + ${dragOffset}px))`,
+                transition: isDragging || !isTransitioning ? 'none' : 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)'
+              }}
+              onTransitionEnd={handleBannerTransitionEnd}
+            >
+              {/* Set 0 (Prefix set for reverse looping) */}
+              {bannerItems.map((item, idx) => (
+                <div 
+                  key={`set0-${idx}`} 
+                  className="moving-banner-item"
+                  style={isMobile && bannerViewportWidth > 0 ? {
+                    flex: `0 0 ${bannerViewportWidth}px`,
+                    width: `${bannerViewportWidth}px`,
+                    minWidth: `${bannerViewportWidth}px`
+                  } : undefined}
+                >
+                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+                </div>
+              ))}
+              {/* Set 1 (Main active set) */}
+              {bannerItems.map((item, idx) => (
+                <div 
+                  key={`set1-${idx}`} 
+                  className="moving-banner-item"
+                  style={isMobile && bannerViewportWidth > 0 ? {
+                    flex: `0 0 ${bannerViewportWidth}px`,
+                    width: `${bannerViewportWidth}px`,
+                    minWidth: `${bannerViewportWidth}px`
+                  } : undefined}
+                >
+                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+                </div>
+              ))}
+              {/* Set 2 (Suffix set for forward looping) */}
+              {bannerItems.map((item, idx) => (
+                <div 
+                  key={`set2-${idx}`} 
+                  className="moving-banner-item"
+                  style={isMobile && bannerViewportWidth > 0 ? {
+                    flex: `0 0 ${bannerViewportWidth}px`,
+                    width: `${bannerViewportWidth}px`,
+                    minWidth: `${bannerViewportWidth}px`
+                  } : undefined}
+                >
+                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="banner-dots">
+            {bannerItems.map((_, idx) => {
+              const activeDotIndex = ((bannerIndex % bannerItems.length) + bannerItems.length) % bannerItems.length;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`banner-dot ${activeDotIndex === idx ? 'active' : ''}`}
+                  onClick={() => handleDotClick(idx)}
+                  aria-label={`Banner slide ${idx + 1}`}
+                />
+              );
+            })}
+          </div>
+        </section>
+
+        {/* 4. Hero Section */}
+        <section className="hero">
+          <div className="hero-copy">
+            <p className="eyebrow">For restaurants that care what they serve</p>
+            <h1>Produce your<br /><i>guests can trust.</i></h1>
+            <p className="hero-description">
+              Chemical-free, traceable produce from Karnataka's best farms — delivered fresh to your kitchen before 6 AM.
+            </p>
+            <div className="hero-actions">
+              <a className="button button-dark" href="#contact">Start sourcing better <span>→</span></a>
+              <a className="text-link" href="#sourcing">See how it works <span>↓</span></a>
+            </div>
+            <div className="hero-proof">
+              <div><strong>1,500+</strong><span>Karnataka farmers</span></div>
+              <div><strong>Weekly</strong><span>lab residue tests</span></div>
+              <div><strong>6 AM</strong><span>kitchen delivery</span></div>
+            </div>
+          </div>
+
+          {/* Hero SVG Art */}
+          <div className="hero-art">
+            <svg viewBox="0 0 600 720" preserveAspectRatio="xMidYMid slice" style={{ width: '100%', height: '100%', display: 'block' }} xmlns="http://www.w3.org/2000/svg">
+              <rect width="600" height="720" fill="#dfd4c3" />
+              <path d="M 0 420 L 251 420 L 251 660 L 600 660 L 600 720 L 0 720 Z" fill="#bd5c38" />
+              <path d="M 250 270 Q 250 130 390 130 L 600 130 L 600 660 L 250 660 Z" fill="#1d4838" />
+              <text x="32" y="44" fontFamily="'DM Mono', monospace" fontSize="12" fontWeight="600" fill="#1d4838" letterSpacing="1.8">ROOTED IN CARE</text>
+              <text x="32" y="64" fontFamily="'DM Mono', monospace" fontSize="12" fontWeight="600" fill="#1d4838" letterSpacing="1.8">MADE FOR GROWTH</text>
+              <g transform="translate(283, 270) rotate(-22)">
+                <path d="M 0,-95 C 48,-45 48,45 0,95 C -48,45 -48,-45 0,-95 Z" fill="#f0e8d9" />
+              </g>
+              <g transform="translate(428, 355) rotate(-52)">
+                <path d="M 0,-110 C 52,-50 52,50 0,110 C -52,50 -52,-50 0,-110 Z" fill="#f0e8d9" />
+              </g>
+              <g transform="translate(222, 510) rotate(-22)">
+                <path d="M 0,-115 C 55,-55 55,55 0,115 C -55,55 -55,-55 0,-115 Z" fill="#f0e8d9" />
+              </g>
+              <text x="568" y="688" textAnchor="end" fontFamily="'DM Mono', monospace" fontSize="12" fontWeight="600" fill="#f0e8d9" letterSpacing="1.8">THE SOIL THEORY</text>
+              <text x="568" y="708" textAnchor="end" fontFamily="'DM Mono', monospace" fontSize="12" fontWeight="600" fill="#f0e8d9" letterSpacing="1.8">EST. WITH INTENTION</text>
+              <rect x="18" y="18" width="564" height="684" fill="none" stroke="rgba(29, 72, 56, 0.15)" strokeWidth="1" />
+            </svg>
+          </div>
+        </section>
+
+        {/* 5. Statement Section */}
+        <section className="statement" id="why">
+          <p className="eyebrow">The kitchen standard</p>
+          <h2>Your menu says <i>fresh.</i><br />Your sourcing should say <i>safe.</i></h2>
+          <p>
+            Restaurants shouldn't have to choose between a reliable supply, a fair price, and food they are proud to serve. Soil Theory is the bridge between those promises.
+          </p>
+        </section>
+
+        {/* 6. Problem Grid Section */}
+        <section className="problem-grid">
+          <article>
+            <span className="number">01</span>
+            <h3>Know the farm.</h3>
+            <p>Every product comes with a clear origin story. No vague market sourcing, no guessing.</p>
+          </article>
+          <article>
+            <span className="number">02</span>
+            <h3>Know what's on it.</h3>
+            <p>We test for pesticide residue every week and share the reports with our partners.</p>
+          </article>
+          <article>
+            <span className="number">03</span>
+            <h3>Know it will arrive.</h3>
+            <p>One dependable supplier, a broad range, and a delivery window built around your prep.</p>
+          </article>
+        </section>
+
+        {/* 7. Process Timeline Section */}
+        <section className="process" id="sourcing">
+          <div className="process-intro">
+            <p className="eyebrow">From farm to pass</p>
+            <h2>Picked after you order.<br /><i>Ready before you prep.</i></h2>
+            <p>We coordinate harvest, quality control, testing and delivery so your team can focus on the food.</p>
+          </div>
+          <ol className="timeline">
+            <div className="timeline-truck-container">
+              <svg className="timeline-truck" viewBox="0 0 80 40" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="40" cy="38" rx="34" ry="1.5" fill="rgba(24, 59, 43, 0.22)" />
+                <g className="timeline-truck-body">
+                  <rect x="6" y="27" width="67" height="3" rx="1.5" fill="var(--ink)" />
+                  <path d="M 48,11 H 63 C 65.5,11 67.5,13 69.5,16 L 73.5,22 C 74.5,23.5 74.5,24.5 74.5,26 V 29 H 48 Z" fill="var(--lime)" />
+                  <path d="M 51,13 H 61.5 L 65.5,19 H 51 Z" fill="var(--ink)" />
+                  <rect x="4" y="6" width="44" height="22" rx="2.5" fill="var(--paper)" />
+                  <line x1="6" y1="6" x2="6" y2="28" stroke="var(--ink)" strokeWidth="1" />
+                  <g transform="translate(1, 0)">
+                    <path d="M 24,17 Q 20,13 17,15 Q 19,20 24,17 Z" fill="var(--moss)" />
+                    <path d="M 24,17 Q 28,12 32,13 Q 30,19 24,17 Z" fill="var(--lime)" />
+                    <path d="M 24,17 L 26,21" stroke="var(--ink)" strokeWidth="1.2" strokeLinecap="round" />
+                  </g>
+                  <circle cx="73" cy="23" r="1.5" fill="#ffffff" />
+                  <line x1="74.5" y1="26" x2="72" y2="26" stroke="var(--ink)" strokeWidth="1" />
+                </g>
+                <g className="truck-wheel">
+                  <circle cx="18" cy="31" r="6.5" fill="var(--ink)" />
+                  <circle cx="18" cy="31" r="3.5" fill="var(--paper)" />
+                  <path d="M 14.5,31 H 21.5 M 18,27.5 V 34.5" stroke="var(--ink)" strokeWidth="1" />
+                </g>
+                <g className="truck-wheel">
+                  <circle cx="58" cy="31" r="6.5" fill="var(--ink)" />
+                  <circle cx="58" cy="31" r="3.5" fill="var(--paper)" />
+                  <path d="M 54.5,31 H 61.5 M 58,27.5 V 34.5" stroke="var(--ink)" strokeWidth="1" />
+                </g>
+              </svg>
+            </div>
+            <li><span>12 PM</span><strong>You order</strong><small>App or WhatsApp</small></li>
+            <li><span>3 PM</span><strong>Farmers notified</strong><small>Harvest prepared</small></li>
+            <li><span>9 PM</span><strong>QC & grading</strong><small>At our FPO hub</small></li>
+            <li><span>6 AM</span><strong>On your counter</strong><small>Fresh and ready</small></li>
+          </ol>
+        </section>
+
+        {/* 8. Interactive Produce Catalog & Workspace Area */}
+        <section id="catalog-workspace" className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 box-border overflow-hidden">
+          
+          {/* Workspace Tabs Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[#183b2b]/20 mb-8 w-full max-w-full min-w-0">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('catalog')}
+                className={`px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'catalog' ? 'bg-[#183b2b] text-[#c9dc74] shadow-md' : 'bg-white/60 text-[#183b2b] hover:bg-white'
+                }`}
+              >
+                <Sprout className="w-4 h-4 inline-block mr-2" />
+                Produce Catalog
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('reports')}
+                className={`px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'reports' ? 'bg-[#183b2b] text-[#c9dc74] shadow-md' : 'bg-white/60 text-[#183b2b] hover:bg-white'
+                }`}
+              >
+                <FileText className="w-4 h-4 inline-block mr-2" />
+                Lab Certifications
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('estimator')}
+                className={`px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'estimator' ? 'bg-[#183b2b] text-[#c9dc74] shadow-md' : 'bg-white/60 text-[#183b2b] hover:bg-white'
+                }`}
+              >
+                <Calculator className="w-4 h-4 inline-block mr-2" />
+                Supply Cost Estimator
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('inquiries')}
+                className={`px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  activeTab === 'inquiries' ? 'bg-[#183b2b] text-[#c9dc74] shadow-md' : 'bg-white/60 text-[#183b2b] hover:bg-white'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 inline-block mr-2" />
+                Inquiries & Logistics
+                {myInquiries.length > 0 && (
+                  <span className="ml-2 bg-[#f48b4d] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                    {myInquiries.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Catalog Search Bar */}
+            {activeTab === 'catalog' && (
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-[#79966e] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="text" 
+                  placeholder="Search produce or farm..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-[#183b2b]/20 text-[#183b2b] pl-9 pr-8 py-2 text-xs focus:outline-none focus:border-[#183b2b]"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')} 
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#79966e] hover:text-[#183b2b] font-bold cursor-pointer"
                   >
-                    <img 
-                      src={bannerItems[activeSlide].image} 
-                      alt={bannerItems[activeSlide].title}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    {/* Corner Tag */}
-                    <div className="absolute top-3 left-3 bg-brand-ink/95 backdrop-blur-xs text-brand-lime text-[10px] font-mono tracking-widest uppercase py-1 px-2.5 font-semibold z-20 shadow-md">
-                      {bannerItems[activeSlide].tag}
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
+                    ×
+                  </button>
+                )}
               </div>
-
-              {/* Slide Content Meta */}
-              <div className="min-h-24 flex flex-col justify-between">
-                <div className="flex items-start justify-between gap-4 mb-2">
-                  <div>
-                    <h3 className="font-serif font-bold text-lg text-brand-ink">
-                      {bannerItems[activeSlide].title}
-                    </h3>
-                    <span className="text-[10px] font-mono text-brand-moss font-semibold uppercase flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3 h-3 text-brand-orange" />
-                      {bannerItems[activeSlide].source}
-                    </span>
-                  </div>
-                </div>
-                
-                <p className="text-xs text-brand-moss/90 leading-relaxed font-sans">
-                  {bannerItems[activeSlide].desc}
-                </p>
-
-                {/* Slider Navigation & Indicators */}
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-brand-cream/65">
-                  <div className="flex gap-2">
-                    {bannerItems.map((_, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActiveSlide(idx)}
-                        className={`h-1.5 transition-all duration-300 ${
-                          idx === activeSlide ? 'w-6 bg-brand-moss' : 'w-1.5 bg-brand-cream hover:bg-brand-moss/40'
-                        }`}
-                        title={`Go to slide ${idx + 1}`}
-                      />
-                    ))}
-                  </div>
-                  
-                  <span className="text-[10px] font-mono text-brand-moss font-bold tracking-widest uppercase">
-                    SHOWCASE 0{activeSlide + 1} / 0{bannerItems.length}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Infinite Scrolling Premium Quality Ticker Banner */}
-      <div className="bg-brand-ink text-brand-paper py-4 border-y border-brand-lime/20 overflow-hidden relative">
-        {/* Ambient fade-out gradients on both edges */}
-        <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-brand-ink to-transparent z-10 pointer-events-none"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-brand-ink to-transparent z-10 pointer-events-none"></div>
-
-        <div className="flex w-max animate-marquee whitespace-nowrap">
-          {/* Track 1 */}
-          <div className="flex items-center gap-16 px-8">
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <CheckCircle2 className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>100% Pesticide-Free Certified</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Award className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Weekly Toxicology Lab Testing</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Sparkles className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Harvested Daily at 4:00 AM</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <MapPin className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Traceable to Karnataka Farms</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Sprout className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Delivered Fresh Before 6:00 AM</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Award className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Premium Restaurant Grade</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <CheckCircle2 className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Zero Chemical Residues</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-          </div>
-
-          {/* Track 2 (Duplicate for seamless infinite looping transition) */}
-          <div className="flex items-center gap-16 px-8">
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <CheckCircle2 className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>100% Pesticide-Free Certified</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Award className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Weekly Toxicology Lab Testing</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Sparkles className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Harvested Daily at 4:00 AM</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <MapPin className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Traceable to Karnataka Farms</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Sprout className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Delivered Fresh Before 6:00 AM</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <Award className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Premium Restaurant Grade</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-            <span className="flex items-center gap-3 text-xs font-mono tracking-widest font-bold uppercase">
-              <CheckCircle2 className="w-4 h-4 text-brand-lime shrink-0" />
-              <span>Zero Chemical Residues</span>
-              <span className="text-brand-lime ml-4">•</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Infinite Scrolling Watercolor Produce Showcase Banner */}
-      <div className="bg-[#f6f3eb] py-8 border-b border-brand-cream/60 overflow-hidden relative">
-        <div className="max-w-7xl mx-auto px-6 mb-4">
-          <h2 className="text-[10px] font-mono tracking-[0.25em] text-brand-moss/80 font-bold uppercase flex items-center gap-2">
-            <span className="w-2 h-2 bg-brand-orange rounded-full"></span>
-            Seasonal Karnataka Harvest Spotlight
-          </h2>
-        </div>
-
-        {/* Ambient fade-out gradients on both edges */}
-        <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#f6f3eb] to-transparent z-10 pointer-events-none"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#f6f3eb] to-transparent z-10 pointer-events-none"></div>
-
-        <div className="flex w-max animate-marquee-slow whitespace-nowrap">
-          {/* Track 1 */}
-          <div className="flex items-center gap-8 px-4">
-            {bannerItems.map((item, idx) => (
-              <div 
-                key={`t1-${idx}`} 
-                className="w-80 inline-flex flex-col bg-brand-paper border border-brand-cream p-4 shadow-sm hover:shadow-md transition-all duration-300"
-              >
-                <div className="h-44 w-full overflow-hidden bg-[#fdfbf7] border border-brand-cream/40 mb-3 flex items-center justify-center relative">
-                  <img 
-                    src={item.image} 
-                    alt={item.title} 
-                    className="w-full h-full object-cover" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="absolute bottom-2 right-2 bg-brand-ink/90 text-brand-lime text-[9px] font-mono tracking-wider uppercase px-2 py-0.5">
-                    {item.tag}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <h4 className="font-serif font-bold text-base text-brand-ink truncate">{item.title}</h4>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 text-brand-orange shrink-0" />
-                    <span className="text-[10px] font-mono text-brand-moss font-bold uppercase tracking-wider">{item.source}</span>
-                  </div>
-                  <p className="text-xs text-brand-moss/80 font-sans mt-2 whitespace-normal line-clamp-2">
-                    {item.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Track 2 (Duplicate for seamless infinite looping transition) */}
-          <div className="flex items-center gap-8 px-4">
-            {bannerItems.map((item, idx) => (
-              <div 
-                key={`t2-${idx}`} 
-                className="w-80 inline-flex flex-col bg-brand-paper border border-brand-cream p-4 shadow-sm hover:shadow-md transition-all duration-300"
-              >
-                <div className="h-44 w-full overflow-hidden bg-[#fdfbf7] border border-brand-cream/40 mb-3 flex items-center justify-center relative">
-                  <img 
-                    src={item.image} 
-                    alt={item.title} 
-                    className="w-full h-full object-cover" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="absolute bottom-2 right-2 bg-brand-ink/90 text-brand-lime text-[9px] font-mono tracking-wider uppercase px-2 py-0.5">
-                    {item.tag}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <h4 className="font-serif font-bold text-base text-brand-ink truncate">{item.title}</h4>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 text-brand-orange shrink-0" />
-                    <span className="text-[10px] font-mono text-brand-moss font-bold uppercase tracking-wider">{item.source}</span>
-                  </div>
-                  <p className="text-xs text-brand-moss/80 font-sans mt-2 whitespace-normal line-clamp-2">
-                    {item.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Interactive Workspace Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-10 flex flex-col lg:flex-row gap-10">
-        
-        {/* Workspace Sidebar Tabs */}
-        <aside className="w-full lg:w-64 shrink-0 flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0 border-b lg:border-b-0 lg:border-r border-brand-cream/60 pr-0 lg:pr-6">
-          <button
-            onClick={() => setActiveTab('catalog')}
-            className={`flex items-center gap-2.5 px-4 py-3 text-sm font-semibold tracking-tight transition-all rounded-none w-full whitespace-nowrap ${
-              activeTab === 'catalog' 
-                ? 'bg-brand-ink text-brand-lime shadow-md shadow-brand-ink/10' 
-                : 'text-brand-ink/75 hover:bg-brand-cream/50'
-            }`}
-          >
-            <Sprout className="w-4 h-4" />
-            Produce Catalog
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex items-center gap-2.5 px-4 py-3 text-sm font-semibold tracking-tight transition-all rounded-none w-full whitespace-nowrap ${
-              activeTab === 'reports' 
-                ? 'bg-brand-ink text-brand-lime shadow-md shadow-brand-ink/10' 
-                : 'text-brand-ink/75 hover:bg-brand-cream/50'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            Lab Certifications
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('estimator')}
-            className={`flex items-center gap-2.5 px-4 py-3 text-sm font-semibold tracking-tight transition-all rounded-none w-full whitespace-nowrap ${
-              activeTab === 'estimator' 
-                ? 'bg-brand-ink text-brand-lime shadow-md shadow-brand-ink/10' 
-                : 'text-brand-ink/75 hover:bg-brand-cream/50'
-            }`}
-          >
-            <Calculator className="w-4 h-4" />
-            Supply Cost Estimator
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('inquiries')}
-            className={`flex items-center gap-2.5 px-4 py-3 text-sm font-semibold tracking-tight transition-all rounded-none w-full whitespace-nowrap relative ${
-              activeTab === 'inquiries' 
-                ? 'bg-brand-ink text-brand-lime shadow-md shadow-brand-ink/10' 
-                : 'text-brand-ink/75 hover:bg-brand-cream/50'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4" />
-            Inquiries & Logistics
-            {myInquiries.length > 0 && (
-              <span className="ml-auto bg-brand-orange text-white text-[10px] font-mono px-2 py-0.5 rounded-full">
-                {myInquiries.length}
-              </span>
             )}
-          </button>
-        </aside>
+          </div>
 
-        {/* Workspace Active Display View */}
-        <section className="flex-1">
           <AnimatePresence mode="wait">
             
-            {/* View: Produce Catalog */}
+            {/* View 1: Produce Catalog */}
             {activeTab === 'catalog' && (
               <motion.div
-                key="catalog"
-                initial={{ opacity: 0, y: 15 }}
+                key="catalog-view"
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
               >
-                <div className="col-span-full mb-4">
-                  <h2 className="font-serif text-3xl font-bold text-brand-ink tracking-tight mb-2">Weekly Fresh Harvest</h2>
-                  <p className="text-sm text-brand-moss">Browse currently available pesticide-free fruits, vegetables, and exotics ready for next-day 6 AM delivery.</p>
+                {/* Filter Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none w-full max-w-full min-w-0">
+                  {['Shop All', 'Vegetables', 'Fruits', 'Leafy Greens', 'Microgreens', 'Exotics'].map((catName) => (
+                    <button
+                      key={catName}
+                      type="button"
+                      onClick={() => setSelectedCategory(catName)}
+                      className={`px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                        selectedCategory === catName
+                          ? 'bg-[#183b2b] text-[#c9dc74]'
+                          : 'bg-white border border-[#e9e3d5] text-[#183b2b] hover:bg-[#e9e3d5]/50'
+                      }`}
+                    >
+                      {catName}
+                    </button>
+                  ))}
+                  {selectedCategory !== 'Shop All' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('Shop All')}
+                      className="text-xs text-[#f48b4d] underline font-mono hover:text-[#183b2b] ml-2 whitespace-nowrap cursor-pointer"
+                    >
+                      Reset Filter
+                    </button>
+                  )}
                 </div>
 
-                {products.map((prod) => (
-                  <div key={prod.id} className="bg-[#faf8f3] border border-brand-cream p-5 flex flex-col justify-between hover:shadow-lg transition-all group">
-                    <div>
-                      <div className="flex justify-between items-start gap-4 mb-2">
-                        <span className="text-[10px] font-mono tracking-wider uppercase text-brand-orange bg-brand-orange/10 px-2 py-0.5">
-                          {prod.category}
-                        </span>
-                        <span className="text-xs font-mono font-bold text-brand-ink">{prod.priceRange}</span>
+                {/* Products Loading / Error / Grid State */}
+                {(() => {
+                  if (productsLoading) {
+                    return (
+                      <div className="bg-white border border-[#e9e3d5] p-12 text-center space-y-3">
+                        <Loader2 className="w-8 h-8 text-[#79966e] animate-spin mx-auto" />
+                        <p className="text-sm text-[#79966e] font-mono">
+                          Loading fresh harvest catalog from Firestore "products" collection...
+                        </p>
                       </div>
-                      
-                      <h3 className="font-serif text-xl font-bold text-brand-ink group-hover:text-brand-moss transition-colors mb-1">
-                        {prod.name}
-                      </h3>
-                      <p className="text-xs text-brand-moss leading-relaxed mb-4">{prod.description}</p>
-                    </div>
+                    );
+                  }
 
-                    <div className="border-t border-brand-cream/60 pt-4 mt-2">
-                      <div className="flex items-center gap-2 text-xs text-brand-moss mb-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-brand-orange shrink-0" />
-                        <span className="truncate">Sourced: <strong>{prod.farmSource}</strong></span>
+                  if (productsError) {
+                    return (
+                      <div className="bg-red-50 border border-red-200 text-red-900 p-6 space-y-3">
+                        <div className="flex items-center gap-2 font-bold text-sm">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                          <span>Unable to load produce catalog from database</span>
+                        </div>
+                        <p className="text-xs font-mono">{productsError}</p>
+                        <button
+                          type="button"
+                          onClick={() => loadProductsFromFirestore()}
+                          className="text-xs bg-red-900 text-white px-4 py-2 font-semibold hover:bg-black transition-all cursor-pointer"
+                        >
+                          Retry Loading Catalog
+                        </button>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-brand-ink">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-moss shrink-0" />
-                        <span>Weekly Status: <strong className="text-[#3b6833]">{prod.weeklyTestStatus}</strong></span>
+                    );
+                  }
+
+                  const activeProducts = products.filter(prod => {
+                    const activeState = prod.isActive ?? (prod as any).active ?? true;
+                    return activeState !== false;
+                  });
+
+                  const filteredProducts = activeProducts.filter(prod => {
+                    const catLower = selectedCategory.toLowerCase().trim();
+                    let matchesCategory = true;
+                    if (catLower !== 'shop all' && catLower !== 'all') {
+                      const prodCat = (prod.category || '').toLowerCase().trim();
+                      if (catLower === 'vegetables') {
+                        matchesCategory = prodCat.includes('veg');
+                      } else if (catLower === 'fruits') {
+                        matchesCategory = prodCat.includes('fruit');
+                      } else if (catLower === 'leafy greens') {
+                        matchesCategory = prodCat.includes('leaf') || prodCat.includes('green') || prodCat.includes('herb') || prodCat.includes('spinach') || prodCat.includes('lettuce');
+                      } else if (catLower === 'microgreens') {
+                        matchesCategory = prodCat.includes('micro') || prodCat.includes('sprout');
+                      } else if (catLower === 'exotics') {
+                        matchesCategory = prodCat.includes('exotic') || prodCat.includes('herb') || prodCat.includes('specialty') || prodCat.includes('mushroom');
+                      } else {
+                        matchesCategory = prodCat.includes(catLower) || catLower.includes(prodCat);
+                      }
+                    }
+
+                    const queryLower = searchQuery.toLowerCase().trim();
+                    const farmSource = getProductFarmSource(prod);
+                    const matchesSearch = !queryLower || 
+                      (prod.name && prod.name.toLowerCase().includes(queryLower)) ||
+                      (prod.description && prod.description.toLowerCase().includes(queryLower)) ||
+                      (prod.shortIntro && prod.shortIntro.toLowerCase().includes(queryLower)) ||
+                      (prod.category && prod.category.toLowerCase().includes(queryLower)) ||
+                      farmSource.toLowerCase().includes(queryLower);
+
+                    return matchesCategory && matchesSearch;
+                  });
+
+                  if (filteredProducts.length === 0) {
+                    return (
+                      <div className="bg-white border border-[#e9e3d5] p-12 text-center space-y-3">
+                        <Sprout className="w-8 h-8 text-[#79966e]/50 mx-auto" />
+                        <p className="text-sm text-[#79966e] font-medium">
+                          No produce found for "{selectedCategory}" {searchQuery ? `matching "${searchQuery}"` : ''}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCategory('Shop All'); setSearchQuery(''); }}
+                          className="text-xs bg-[#183b2b] text-[#f4f0e7] px-4 py-2 font-semibold hover:bg-[#79966e] transition-all cursor-pointer"
+                        >
+                          View All Harvest
+                        </button>
                       </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredProducts.map((prod) => {
+                        const priceRange = getProductPriceRange(prod);
+                        const farmSource = getProductFarmSource(prod);
+                        const weeklyStatus = getProductWeeklyTestStatus(prod);
+                        const description = getProductDescription(prod);
+                        const currentQty = estimateQuantities[prod.id] || 0;
+
+                        return (
+                          <div 
+                            key={prod.id} 
+                            className="bg-white border border-[#e9e3d5] p-5 flex flex-col justify-between hover:shadow-lg transition-all group cursor-pointer"
+                            onClick={() => setSelectedProduct(prod)}
+                          >
+                            <div>
+                              <div className="flex justify-between items-start gap-4 mb-2">
+                                <span className="text-[10px] font-mono tracking-wider uppercase text-[#f48b4d] bg-[#f48b4d]/10 px-2 py-0.5 font-bold">
+                                  {prod.category}
+                                </span>
+                                <span className="text-xs font-mono font-bold text-[#183b2b]">{priceRange}</span>
+                              </div>
+                              
+                              <h3 className="font-serif text-xl font-bold text-[#183b2b] group-hover:text-[#79966e] transition-colors mb-1">
+                                {prod.name}
+                              </h3>
+                              <p className="text-xs text-[#55705c] leading-relaxed mb-4 line-clamp-2">{description}</p>
+                            </div>
+
+                            <div className="border-t border-[#e9e3d5] pt-4 mt-2" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-2 text-xs text-[#55705c] mb-2">
+                                <MapPin className="w-3.5 h-3.5 text-[#f48b4d] shrink-0" />
+                                <span className="truncate">Source: <strong>{farmSource}</strong></span>
+                              </div>
+                              
+                              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#e9e3d5]/50">
+                                <span className="text-[11px] text-[#3e6927] font-semibold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  {weeklyStatus}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEstimateQuantities(prev => ({
+                                      ...prev,
+                                      [prod.id]: (prev[prod.id] || 0) + 10
+                                    }));
+                                    setIsCartOpen(true);
+                                  }}
+                                  className="text-xs font-bold bg-[#183b2b] text-[#c9dc74] px-3 py-1.5 hover:bg-[#79966e] transition-all cursor-pointer shrink-0"
+                                >
+                                  + Add 10kg {currentQty > 0 ? `(${currentQty}kg)` : ''}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
-                ))}
+                  );
+                })()}
               </motion.div>
             )}
 
-            {/* View: Lab Certifications */}
+            {/* View 2: Lab Certifications */}
             {activeTab === 'reports' && (
               <motion.div
-                key="reports"
-                initial={{ opacity: 0, y: 15 }}
+                key="reports-view"
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
                 className="space-y-6"
               >
-                <div>
-                  <h2 className="font-serif text-3xl font-bold text-brand-ink tracking-tight mb-2">Toxicology Certifications</h2>
-                  <p className="text-sm text-brand-moss">We scan every single crop batch weekly for 148+ synthetic fertilizers and pesticides. Zero residues, guaranteed.</p>
-                </div>
-
-                <div className="bg-[#faf8f3] border border-brand-cream overflow-hidden">
-                  <div className="p-5 bg-brand-ink text-brand-paper flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="bg-white border border-[#e9e3d5] p-6 space-y-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#e9e3d5] pb-4">
                     <div>
-                      <h3 className="font-serif text-lg font-bold">Standard of Integrity</h3>
-                      <p className="text-xs text-brand-lime font-mono">ALL BATCHES MATCH BENGALURU MUNICIPAL HEALTH NORMS & INDEPENDENT SGS PROTOCOLS</p>
+                      <h3 className="font-serif text-2xl font-bold text-[#183b2b]">Weekly Toxicology & Residue Certifications</h3>
+                      <p className="text-xs text-[#55705c] mt-1">
+                        Independent SGS & FSSAI accredited laboratory reports conducted weekly across all Karnataka partner farms.
+                      </p>
                     </div>
-                    <div className="bg-brand-lime text-brand-ink font-mono text-[10px] font-bold px-3 py-1 uppercase tracking-wider">
-                      Zero Tolerance Zone
-                    </div>
+                    <span className="bg-[#c9dc74] text-[#183b2b] font-mono text-xs font-bold px-3 py-1 uppercase tracking-wider">
+                      Zero Residue Guarantee
+                    </span>
                   </div>
 
-                  <div className="divide-y divide-brand-cream/80">
+                  <div className="divide-y divide-[#e9e3d5]">
                     {reports.map((rep) => (
-                      <div key={rep.id} className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs text-brand-orange font-bold">{rep.id}</span>
-                            <span className="text-[10px] font-mono text-brand-moss bg-brand-cream px-2 py-0.5 rounded-none">
+                      <div key={rep.id} className="py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-xs text-[#f48b4d] font-bold">{rep.id}</span>
+                            <span className="text-[10px] font-mono text-[#55705c] bg-[#f4f0e7] px-2 py-0.5">
                               Batch: {rep.batchId}
                             </span>
                           </div>
-                          <h4 className="font-serif text-xl font-bold text-brand-ink">{rep.result}</h4>
-                          <p className="text-xs text-brand-moss">Tested on {rep.testDate} at {rep.labName}</p>
-                          <p className="text-xs font-mono text-[#2f5527] bg-[#e1ecd9] inline-block px-2.5 py-0.5">
-                            Scanned for {rep.pesticideScanCount} pesticide compounds
-                          </p>
+                          <h4 className="font-serif text-lg font-bold text-[#183b2b]">{rep.result}</h4>
+                          <p className="text-xs text-[#55705c]">Tested on {rep.testDate} at {rep.labName}</p>
                         </div>
-                        
-                        <div className="flex flex-col items-end shrink-0 gap-2 w-full md:w-auto">
-                          <span className="flex items-center gap-1.5 text-xs text-brand-moss font-bold">
-                            <CheckCircle2 className="w-4 h-4 text-[#355a29]" />
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-[#3e6927] flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" />
                             {rep.status}
                           </span>
                           <a 
                             href={rep.downloadUrl}
                             onClick={(e) => { e.preventDefault(); alert(`Downloading PDF Verification Report for Batch: ${rep.batchId}`); }}
-                            className="text-xs font-bold text-brand-ink underline hover:text-brand-moss whitespace-nowrap"
+                            className="button button-dark text-xs px-3 py-1.5"
                           >
-                            Download verified PDF certificate
+                            Download PDF Report
                           </a>
                         </div>
                       </div>
@@ -884,318 +1849,459 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* View: Supply Cost Estimator */}
+            {/* View 3: Supply Cost Estimator */}
             {activeTab === 'estimator' && (
               <motion.div
-                key="estimator"
-                initial={{ opacity: 0, y: 15 }}
+                key="estimator-view"
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
                 className="space-y-6"
               >
-                <div>
-                  <h2 className="font-serif text-3xl font-bold text-brand-ink tracking-tight mb-2">Smart Weekly Cost Estimator</h2>
-                  <p className="text-sm text-brand-moss">Input your restaurant's weekly volume requirements. High volume unlocks exclusive discount tiers.</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Volume Discount Indicator */}
-                  <div className="bg-brand-cream/35 p-4 border border-brand-cream/80 text-center flex flex-col justify-center">
-                    <span className="text-[10px] font-mono tracking-wider block text-brand-moss uppercase mb-1">Standard Tier</span>
-                    <strong className="font-serif text-xl font-bold text-brand-ink">Volume &lt; 20 kg</strong>
-                    <span className="text-xs text-brand-moss mt-1">Base Restaurant Rate</span>
+                <div className="bg-white border border-[#e9e3d5] p-6 space-y-6">
+                  <div>
+                    <h3 className="font-serif text-2xl font-bold text-[#183b2b]">Smart Supply Cost Estimator</h3>
+                    <p className="text-xs text-[#55705c] mt-1">
+                      Adjust your expected weekly volumes to see volume discount pricing and dynamic totals.
+                    </p>
                   </div>
-                  <div className="bg-brand-lime/10 p-4 border border-brand-lime/30 text-center flex flex-col justify-center">
-                    <span className="text-[10px] font-mono tracking-wider block text-brand-moss uppercase mb-1">Mid-Volume Tier</span>
-                    <strong className="font-serif text-xl font-bold text-brand-ink">Volume &gt;= 20 kg</strong>
-                    <span className="text-xs text-[#2c4e22] font-semibold mt-1">Save 5% on all items</span>
-                  </div>
-                  <div className="bg-brand-ink text-brand-paper p-4 text-center flex flex-col justify-center">
-                    <span className="text-[10px] font-mono tracking-wider block text-brand-lime uppercase mb-1">High-Volume Tier</span>
-                    <strong className="font-serif text-xl font-bold text-brand-lime">Volume &gt;= 50 kg</strong>
-                    <span className="text-xs text-brand-cream mt-1">Save 10% on all items</span>
-                  </div>
-                </div>
 
-                {/* Estimate Inputs List */}
-                <div className="bg-[#faf8f3] border border-brand-cream divide-y divide-brand-cream/60">
-                  {products.map((prod) => {
-                    const currentQty = estimateQuantities[prod.id] || 0;
-                    return (
-                      <div key={prod.id} className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div className="max-w-md">
-                          <h4 className="font-serif text-lg font-bold text-brand-ink">{prod.name}</h4>
-                          <p className="text-xs text-brand-moss">{prod.farmSource}</p>
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div className="p-4 bg-[#f4f0e7] border border-[#e9e3d5]">
+                      <span className="text-[10px] font-mono uppercase text-[#55705c]">Standard Tier</span>
+                      <strong className="block font-serif text-lg text-[#183b2b] mt-1">&lt; 20 kg/week</strong>
+                      <span className="text-xs text-[#55705c]">Base Rate</span>
+                    </div>
+                    <div className="p-4 bg-[#c9dc74]/20 border border-[#c9dc74]">
+                      <span className="text-[10px] font-mono uppercase text-[#3e6927] font-bold">Mid Volume Tier</span>
+                      <strong className="block font-serif text-lg text-[#183b2b] mt-1">&gt;= 20 kg/week</strong>
+                      <span className="text-xs text-[#3e6927] font-bold">5% Volume Discount</span>
+                    </div>
+                    <div className="p-4 bg-[#183b2b] text-[#f4f0e7]">
+                      <span className="text-[10px] font-mono uppercase text-[#c9dc74]">High Volume Tier</span>
+                      <strong className="block font-serif text-lg text-[#c9dc74] mt-1">&gt;= 50 kg/week</strong>
+                      <span className="text-xs text-[#e9e3d5]">10% Volume Discount</span>
+                    </div>
+                  </div>
 
-                        <div className="flex items-center gap-4 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
-                          <span className="text-xs font-mono text-brand-moss">Baseline: {prod.priceRange}</span>
+                  {/* Quantity adjustment list */}
+                  <div className="divide-y divide-[#e9e3d5] border-t border-b border-[#e9e3d5]">
+                    {products.slice(0, 8).map((prod) => {
+                      const qty = estimateQuantities[prod.id] || 0;
+                      return (
+                        <div key={prod.id} className="py-3 flex justify-between items-center gap-4">
+                          <div>
+                            <h4 className="font-serif font-bold text-sm text-[#183b2b]">{prod.name}</h4>
+                            <span className="text-xs text-[#55705c]">{getProductPriceRange(prod)}</span>
+                          </div>
                           <div className="flex items-center gap-2">
                             <input 
-                              type="number" 
+                              type="number"
                               min="0"
                               max="1000"
-                              value={currentQty || ''}
+                              value={qty || ''}
                               onChange={(e) => {
                                 const val = parseInt(e.target.value) || 0;
                                 setEstimateQuantities(prev => ({ ...prev, [prod.id]: val }));
                               }}
                               placeholder="0"
-                              className="w-20 bg-white border border-brand-cream text-brand-ink px-3 py-1.5 text-center font-mono focus:outline-none focus:border-brand-ink"
+                              className="w-20 border border-[#e9e3d5] px-2 py-1 text-xs font-mono text-center focus:outline-none focus:border-[#183b2b]"
                             />
-                            <span className="text-sm font-semibold text-brand-ink">kg</span>
+                            <span className="text-xs font-bold text-[#183b2b]">kg</span>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Live Estimator Total Display */}
-                <div className="bg-[#183b2b] text-white p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                  <div>
-                    <h3 className="font-serif text-2xl font-bold text-brand-lime">Weekly Supply Estimate</h3>
-                    <p className="text-xs text-brand-cream/80 max-w-md mt-1">
-                      This calculation takes into account dynamic volume tiers. Final logistics are tailored to your exact delivery time slots.
-                    </p>
+                      );
+                    })}
                   </div>
-                  <div className="flex flex-col items-start sm:items-end">
-                    <span className="text-xs font-mono text-brand-lime">ESTIMATED WEEKLY COST</span>
-                    <strong className="font-serif text-4xl font-bold text-white">₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
-                    <span className="text-[10px] font-mono text-brand-cream/60">excl. local delivery fees</span>
-                  </div>
-                </div>
 
-                {/* Use Estimate Button */}
-                <div className="flex justify-end mt-4">
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        alert('Please Partner Sign-In at the top right first to submit your estimate as an official inquiry!');
-                      } else {
+                  <div className="bg-[#183b2b] text-[#f4f0e7] p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <span className="text-xs font-mono text-[#c9dc74] uppercase">ESTIMATED WEEKLY COST</span>
+                      <strong className="block font-serif text-3xl text-white">₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setActiveTab('inquiries');
-                      }
-                    }}
-                    className="flex items-center gap-2 bg-brand-orange hover:bg-[#d87635] text-white font-bold py-3 px-6 transition-all shadow-md shadow-brand-orange/10"
-                  >
-                    Proceed with this Estimate to Inquiry
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                        const el = document.getElementById('contact');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="button button-light font-bold text-xs px-6 py-3"
+                    >
+                      Proceed to Official Inquiry <span>→</span>
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
 
-            {/* View: Inquiries Portal */}
+            {/* View 4: Inquiries & Logistics Portal */}
             {activeTab === 'inquiries' && (
               <motion.div
-                key="inquiries"
-                initial={{ opacity: 0, y: 15 }}
+                key="inquiries-view"
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.25 }}
-                className="space-y-10"
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
               >
-                <div>
-                  <h2 className="font-serif text-3xl font-bold text-brand-ink tracking-tight mb-2">Restaurant Inquiries & Logistics</h2>
-                  <p className="text-sm text-brand-moss">Submit custom daily requirements, schedule recurring pre-6 AM drop-offs, and track active supply logistics.</p>
-                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                  
+                  {/* Submission Form */}
+                  <div className="lg:col-span-7 bg-white border border-[#e9e3d5] p-6 space-y-4">
+                    <h3 className="font-serif text-xl font-bold text-[#183b2b] border-b border-[#e9e3d5] pb-3">
+                      Submit Restaurant Onboarding Inquiry
+                    </h3>
 
-                {!user ? (
-                  <div className="bg-brand-cream/25 border border-brand-cream p-12 text-center max-w-xl mx-auto space-y-6">
-                    <ClipboardList className="w-12 h-12 text-brand-moss mx-auto animate-bounce" />
-                    <div className="space-y-2">
-                      <h3 className="font-serif text-2xl font-bold text-brand-ink">Access Secure Logistics Portal</h3>
-                      <p className="text-sm text-brand-moss max-w-md mx-auto leading-relaxed">
-                        To protect trade secrets, price transparency, and manage active deliveries, we require authenticated partner sessions via Google Sign-In.
-                      </p>
-                    </div>
-                    <button 
-                      onClick={handleLogin}
-                      className="inline-flex items-center gap-2 bg-brand-ink text-brand-paper px-6 py-3 font-semibold text-sm hover:bg-brand-moss transition-all rounded-none"
-                    >
-                      <LogIn className="w-4 h-4 text-brand-lime" />
-                      Sign In using Google
-                    </button>
+                    {inquirySuccess && (
+                      <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-4 text-xs font-medium flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span>Inquiry submitted successfully! Our Bengaluru logistics officer will reach out shortly.</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSubmitInquiry} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-mono font-bold uppercase text-[#183b2b] mb-1">RESTAURANT / CAFE NAME</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="e.g. Olive Bar & Kitchen, Indiranagar"
+                          value={restaurantName}
+                          onChange={(e) => setRestaurantName(e.target.value)}
+                          className="w-full bg-[#f4f0e7]/50 border border-[#e9e3d5] px-3 py-2 text-xs focus:outline-none focus:border-[#183b2b]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-mono font-bold uppercase text-[#183b2b] mb-1">DIRECT CONTACT PHONE</label>
+                        <input 
+                          type="tel"
+                          required
+                          placeholder="e.g. +91 98805 85292"
+                          value={contactNumber}
+                          onChange={(e) => setContactNumber(e.target.value)}
+                          className="w-full bg-[#f4f0e7]/50 border border-[#e9e3d5] px-3 py-2 text-xs focus:outline-none focus:border-[#183b2b]"
+                        />
+                      </div>
+
+                      <div className="bg-[#f4f0e7] p-3 text-xs space-y-1">
+                        <span className="font-mono font-bold text-[#55705c]">SELECTED INQUIRY SUMMARY:</span>
+                        <p className="font-mono text-[#183b2b]">
+                          {cartItemCount > 0 ? `${cartItemCount} items selected in cart` : `Daily Requirement: ~${dailyRequirementKg} kg/day`}
+                        </p>
+                        <p className="font-bold text-[#183b2b]">Estimated Cost: ₹{getEstimatedTotal().toLocaleString('en-IN')}</p>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={submittingInquiry}
+                        className="button button-dark w-full text-xs font-bold py-3 flex items-center justify-center gap-2"
+                      >
+                        {submittingInquiry ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-[#c9dc74]" />
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 text-[#c9dc74]" />
+                            Submit Official Supply Request
+                          </>
+                        )}
+                      </button>
+                    </form>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                    
-                    {/* Submission Inquiry Form */}
-                    <div className="lg:col-span-7 bg-[#faf8f3] border border-brand-cream p-6">
-                      <h3 className="font-serif text-xl font-bold text-brand-ink border-b border-brand-cream pb-3 mb-6 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-brand-orange" />
-                        Create New Restaurant Inquiry
-                      </h3>
 
-                      {inquirySuccess && (
-                        <div className="bg-[#e4eed9] border border-brand-moss p-4 text-brand-ink mb-6 text-sm flex items-center gap-3">
-                          <CheckCircle2 className="w-5 h-5 text-[#3e6927] shrink-0" />
-                          <div>
-                            <strong>Inquiry Submitted Successfully!</strong>
-                            <p className="text-xs text-brand-moss mt-0.5">Our Bangalore logistics officer will contact you within 2 hours to finalize onboarding.</p>
-                          </div>
-                        </div>
-                      )}
+                  {/* Logistics History */}
+                  <div className="lg:col-span-5 bg-white border border-[#e9e3d5] p-6 space-y-4">
+                    <h3 className="font-serif text-xl font-bold text-[#183b2b] border-b border-[#e9e3d5] pb-3 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-[#79966e]" />
+                      Logistics History
+                    </h3>
 
-                      <form onSubmit={handleSubmitInquiry} className="space-y-5">
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-brand-ink font-mono uppercase">RESTAURANT NAME</label>
-                          <input 
-                            type="text" 
-                            required
-                            placeholder="e.g. Olive Bar & Kitchen, Bangalore"
-                            value={restaurantName}
-                            onChange={(e) => setRestaurantName(e.target.value)}
-                            className="w-full bg-white border border-brand-cream text-brand-ink px-4 py-2.5 focus:outline-none focus:border-brand-ink"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-brand-ink font-mono uppercase">LOGISTICS DIRECT CONTACT (PHONE)</label>
-                          <input 
-                            type="tel" 
-                            required
-                            placeholder="e.g. +91 98805 85292"
-                            value={contactNumber}
-                            onChange={(e) => setContactNumber(e.target.value)}
-                            className="w-full bg-white border border-brand-cream text-brand-ink px-4 py-2.5 focus:outline-none focus:border-brand-ink"
-                          />
-                        </div>
-
-                        {/* Selected estimate summary */}
-                        <div className="bg-brand-cream/30 p-4 border border-brand-cream space-y-2">
-                          <h4 className="text-xs font-bold font-mono text-brand-moss uppercase">Inquiry Items Summary</h4>
-                          {Object.keys(estimateQuantities).some(k => (estimateQuantities[k] || 0) > 0) ? (
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap gap-2">
-                                {products.map((p) => {
-                                  const qty = estimateQuantities[p.id] || 0;
-                                  return qty > 0 ? (
-                                    <span key={p.id} className="text-xs bg-white border border-brand-cream px-2.5 py-1 text-brand-ink font-mono">
-                                      {p.name} — {qty}kg
-                                    </span>
-                                  ) : null;
-                                })}
-                              </div>
-                              <div className="flex justify-between items-center border-t border-brand-cream/50 pt-2 mt-2">
-                                <span className="text-xs text-brand-moss">Live Pricing Tier Applied:</span>
-                                <strong className="text-sm text-brand-ink">Weekly Cost: ~₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-brand-moss italic">
-                              No specific quantities requested. Proceed to submit a general onboarding inquiry for custom pesticide-free supply setup.
-                            </p>
-                          )}
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={submittingInquiry}
-                          className="w-full bg-brand-ink text-brand-paper hover:bg-brand-moss transition-all py-3 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                          {submittingInquiry ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin text-brand-lime" />
-                              Submitting Inquiry securely...
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-4 h-4 text-brand-lime" />
-                              Submit Official Supply Inquiry
-                            </>
-                          )}
+                    {!user ? (
+                      <div className="text-center py-6 space-y-3">
+                        <p className="text-xs text-[#55705c]">Sign in with Google to view your restaurant's active supply requests and logistics timeline.</p>
+                        <button type="button" onClick={handleLogin} className="button button-dark text-xs px-4 py-2">
+                          Sign In with Google
                         </button>
-                      </form>
-                    </div>
-
-                    {/* Historical Inquiries List */}
-                    <div className="lg:col-span-5 space-y-6">
-                      <h3 className="font-serif text-xl font-bold text-brand-ink flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-brand-moss" />
-                        Logistics History
-                      </h3>
-
-                      {myInquiries.length === 0 ? (
-                        <div className="bg-brand-cream/20 p-6 text-center border border-brand-cream/50">
-                          <p className="text-xs text-brand-moss italic">No previous inquiries. Submit your first onboarding request above.</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                          {myInquiries.map((inq) => (
-                            <div key={inq.id} className="bg-white border border-brand-cream p-4 space-y-3">
-                              <div className="flex justify-between items-center">
-                                <span className="text-[10px] font-mono text-brand-moss">INQ-{inq.id}</span>
-                                <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 ${
-                                  inq.status === 'delivered' 
-                                    ? 'bg-[#e4eed9] text-[#3e6927]' 
-                                    : 'bg-brand-orange/10 text-brand-orange'
-                                }`}>
-                                  {inq.status}
-                                </span>
-                              </div>
-
-                              <div className="space-y-1">
-                                <h4 className="font-serif font-bold text-brand-ink">{inq.restaurantName}</h4>
-                                <p className="text-xs text-brand-moss flex items-center gap-1.5">
-                                  <Phone className="w-3 h-3 text-brand-orange" />
-                                  {inq.contactNumber}
-                                </p>
-                                <p className="text-xs text-brand-ink font-mono bg-brand-paper/40 p-2 border border-brand-cream/40">
-                                  {inq.items}
-                                </p>
-                              </div>
-
-                              <div className="border-t border-brand-cream/50 pt-2 flex justify-between items-center text-xs text-brand-moss">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  {new Date(inq.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                                </span>
-                                <strong className="text-brand-ink font-semibold">₹{parseInt(inq.estimatedCost).toLocaleString('en-IN')}</strong>
-                              </div>
+                      </div>
+                    ) : myInquiries.length === 0 ? (
+                      <p className="text-xs text-[#55705c] italic text-center py-6">No previous inquiries found for this account.</p>
+                    ) : (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {myInquiries.map((inq) => (
+                          <div key={inq.id} className="p-3 border border-[#e9e3d5] bg-[#f4f0e7]/30 space-y-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-mono font-bold text-[#183b2b]">{inq.restaurantName}</span>
+                              <span className="font-mono text-[10px] bg-[#c9dc74] text-[#183b2b] px-1.5 py-0.5 font-bold uppercase">
+                                {inq.status}
+                              </span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
+                            <p className="text-[11px] text-[#55705c] font-mono">{inq.items}</p>
+                            <div className="flex justify-between items-center text-[10px] text-[#55705c] pt-1">
+                              <span>{new Date(inq.createdAt).toLocaleDateString('en-IN')}</span>
+                              <strong className="text-[#183b2b]">₹{parseInt(inq.estimatedCost).toLocaleString('en-IN')}</strong>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+
+                </div>
               </motion.div>
             )}
 
           </AnimatePresence>
         </section>
 
+        {/* Product Detail Modal */}
+        {selectedProduct && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+            <div className="bg-[#f4f0e7] border border-[#183b2b] max-w-lg w-full p-6 space-y-4 shadow-2xl relative">
+              <button 
+                type="button" 
+                onClick={() => setSelectedProduct(null)} 
+                className="absolute top-4 right-4 text-[#183b2b] hover:text-[#f48b4d] font-bold text-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <span className="text-[10px] font-mono text-[#f48b4d] font-bold uppercase bg-[#f48b4d]/10 px-2 py-0.5">
+                {selectedProduct.category}
+              </span>
+              <h3 className="font-serif text-2xl font-bold text-[#183b2b]">{selectedProduct.name}</h3>
+              <p className="text-xs text-[#55705c] leading-relaxed">{getProductDescription(selectedProduct)}</p>
+
+              <div className="bg-white p-3 border border-[#e9e3d5] space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-[#55705c]">Price Range:</span>
+                  <strong className="text-[#183b2b] font-mono">{getProductPriceRange(selectedProduct)}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#55705c]">Farm Source:</span>
+                  <strong className="text-[#183b2b]">{getProductFarmSource(selectedProduct)}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#55705c]">Weekly Test Status:</span>
+                  <strong className="text-[#3e6927]">{getProductWeeklyTestStatus(selectedProduct)}</strong>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEstimateQuantities(prev => ({
+                      ...prev,
+                      [selectedProduct.id]: (prev[selectedProduct.id] || 0) + 10
+                    }));
+                    setSelectedProduct(null);
+                    setIsCartOpen(true);
+                  }}
+                  className="button button-dark text-xs px-4 py-2 font-bold"
+                >
+                  + Add 10kg to Inquiry Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 9. Report / Lab Testing Section */}
+        <section className="report-section">
+          <div className="report-copy">
+            <p className="eyebrow">Proof, not promises</p>
+            <h2>Lab-tested weekly.<br /><i>Guaranteed safe.</i></h2>
+            <p>
+              We conduct pesticide-residue testing every week. If a batch fails, it never ships. We share the report, because trust should be visible.
+            </p>
+            <div className="guarantee">
+              <span>↻</span>
+              <p><strong>Our QA policy</strong><br />If a vegetable disappoints you, we replace it. Free. No forms.</p>
+            </div>
+          </div>
+          <div className="report-card" aria-label="Example weekly pesticide report">
+            <div className="report-top">
+              <span className="report-wordmark">THE SOIL <b>THEORY</b></span>
+              <span>WEEKLY REPORT</span>
+            </div>
+            <h3>Residue test report</h3>
+            <p className="report-meta">REPORT ID: ST-2026-W28 &nbsp;•&nbsp; JULY 10, 2026</p>
+            <div className="report-row"><span>Sample type</span><b>Mixed produce</b></div>
+            <div className="report-row"><span>Organophosphates</span><b>Not detected</b></div>
+            <div className="report-row"><span>Carbamates</span><b>Not detected</b></div>
+            <div className="report-row"><span>Pyrethroids</span><b>Not detected</b></div>
+            <div className="report-result"><span>Overall result</span><strong>Passed <i>✓</i></strong></div>
+          </div>
+        </section>
+
+        {/* 10. Tiers Section */}
+        <section className="tiers" id="tiers">
+          <div className="tiers-heading">
+            <p className="eyebrow">One partner, five tiers</p>
+            <h2>The full market,<br /><i>held to one standard.</i></h2>
+          </div>
+          <div className="tier-list">
+            <article>
+              <span className="tier-no">01</span>
+              <div>
+                <h3>Certified organic</h3>
+                <p>FSSAI/PGS certified. For menu claims.</p>
+              </div>
+              <b>₹60–70/kg</b>
+            </article>
+            <article>
+              <span className="tier-no">02</span>
+              <div>
+                <h3>Organically grown</h3>
+                <p>Certification in progress. Same standards.</p>
+              </div>
+              <b>₹55–60/kg</b>
+            </article>
+            <article>
+              <span className="tier-no">03</span>
+              <div>
+                <h3>Pesticide-free</h3>
+                <p>Controlled sourcing. No synthetic pesticides.</p>
+              </div>
+              <b>₹45–50/kg</b>
+            </article>
+            <article>
+              <span className="tier-no">04</span>
+              <div>
+                <h3>Microgreens & specialty</h3>
+                <p>Premium ingredients for high-margin menus.</p>
+              </div>
+              <b>₹150–300/kg</b>
+            </article>
+            <article>
+              <span className="tier-no">05</span>
+              <div>
+                <h3>Imported exotics</h3>
+                <p>Verified safe differentiation items.</p>
+              </div>
+              <b>On request</b>
+            </article>
+          </div>
+        </section>
+
+        {/* 11. Supply Cost Calculator Section */}
+        <section className="calculator">
+          <div>
+            <p className="eyebrow">A fairer food cost</p>
+            <h2>Built for your<br /><i>actual kitchen.</i></h2>
+            <p>Get a tailored sample invoice based on your menu and expected volumes.</p>
+          </div>
+          <form 
+            className="estimate-form" 
+            id="estimate-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setActiveTab('inquiries');
+              const el = document.getElementById('contact');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+          >
+            <label>
+              Daily produce requirement 
+              <output id="kg-output">{dailyRequirementKg} kg</output>
+              <input 
+                id="kg-input" 
+                type="range" 
+                min="20" 
+                max="300" 
+                value={dailyRequirementKg} 
+                step="5" 
+                onChange={(e) => setDailyRequirementKg(Number(e.target.value))}
+              />
+            </label>
+            <div className="estimate-total">
+              <span>Estimated monthly produce</span>
+              <strong id="estimate-output">₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
+              <small>Based on ₹68/kg average, excluding delivery</small>
+            </div>
+            <button type="submit" className="button button-light">
+              Request your sample invoice <span>→</span>
+            </button>
+          </form>
+        </section>
+
+        {/* 12. Contact & Inquiry Section */}
+        <section className="contact" id="contact">
+          <div>
+            <p className="eyebrow">Let's talk</p>
+            <h2>Your kitchen.<br />Our farmers.<br /><i>One promise:</i><br />chemical-free.</h2>
+          </div>
+          <div className="contact-details">
+            <p>Ready to change what's coming through your kitchen door? Tell us a little about your restaurant.</p>
+            <a href="tel:+919880585292">+91 98805 85292 <span>↗</span></a>
+            <a href="mailto:hello@soiltheory.in">hello@soiltheory.in <span>↗</span></a>
+            <a href="https://www.thesoiltheory.in" target="_blank" rel="noreferrer">thesoiltheory.in <span>↗</span></a>
+            <a 
+              className="button button-light contact-button" 
+              href="https://wa.me/919880585292?text=Hi%20Soil%20Theory%2C%20I%27d%20like%20to%20learn%20more%20about%20sourcing%20produce." 
+              target="_blank" 
+              rel="noreferrer"
+            >
+              Message on WhatsApp <span>→</span>
+            </a>
+          </div>
+        </section>
+
+        {/* 13. FAQ Section */}
+        <section className="faq-section py-16 px-6 bg-[#f8f7f0] border-t border-[#183b2b]/10" id="faq">
+          <div className="max-w-4xl mx-auto">
+            <p className="eyebrow mb-2">Common Questions</p>
+            <h2 className="font-serif text-3xl md:text-4xl font-bold text-[#183b2b] mb-8">
+              Frequently Asked <i className="italic font-normal">Questions.</i>
+            </h2>
+            
+            <div className="divide-y divide-[#183b2b]/20 border-t border-b border-[#183b2b]/20">
+              {faqData.map((faq, idx) => (
+                <details key={idx} className="group py-5 transition-all">
+                  <summary className="flex justify-between items-center cursor-pointer font-serif font-bold text-lg text-[#183b2b] list-none select-none">
+                    <span>{faq.q}</span>
+                    <span className="text-xl text-[#79966e] group-open:rotate-45 transition-transform duration-200">
+                      +
+                    </span>
+                  </summary>
+                  <p className="text-sm text-[#55705c] leading-relaxed mt-3 max-w-2xl">
+                    {faq.a}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
 
-      {/* Elegant Editorial Footer */}
-      <footer className="bg-[#183b2b] text-brand-paper py-10 mt-12 border-t border-brand-cream/10">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-3">
-            <Sprout className="w-6 h-6 text-brand-lime" />
-            <span className="font-serif text-lg font-bold tracking-tight">The Soil Theory .</span>
-          </div>
-          <div className="text-center md:text-right space-y-1">
-            <p className="text-xs text-brand-cream/80">
-              © {new Date().getFullYear()} The Soil Theory Agriculture LLP. All Rights Reserved.
-            </p>
-            <p className="text-[10px] text-brand-cream/60 font-mono flex items-center justify-center md:justify-end gap-2">
-              <span>Bengaluru Office: Indiranagar Stage 2, Bangalore, KA, India. Hello@soiltheory.in</span>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => navigateTo('/admin/login')}
-                className="underline hover:text-brand-lime transition-colors cursor-pointer"
-                id="footer-admin-link"
-              >
-                Admin Portal
-              </button>
-            </p>
-          </div>
-        </div>
+      {/* 14. Footer & Legal Bar */}
+      <footer>
+        <a className="wordmark" href="#top" aria-label="Soil Theory home">
+          <span>THE SOIL</span>
+          <strong>THEORY</strong>
+          <i></i>
+        </a>
+        <span>© 2026 Soil Theory</span>
+        <span>Grown with care in Karnataka</span>
       </footer>
+
+      <div className="legal-bar">
+        <a href="/about.html">About</a>
+        <a href="/faq.html">FAQ</a>
+        <a href="/blog.html">Blog</a>
+        <a href="/privacy.html">Privacy Policy</a>
+        <a href="/terms.html">Terms of Service</a>
+        <button
+          type="button"
+          onClick={() => navigateTo('/admin/login')}
+          className="text-[#57705e] underline hover:text-[#183b2b] cursor-pointer"
+          id="footer-admin-link"
+        >
+          Admin Portal
+        </button>
+      </div>
 
     </div>
   );
