@@ -47,6 +47,9 @@ export interface CatalogProduct {
   images: string[]; // Up to 5 product image URLs
   variants: ProductVariant[];
   isActive: boolean;
+  featuredProduct?: boolean;
+  promotionalPriority?: 'none' | 'low' | 'medium' | 'high';
+  excludeFromRecommendations?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -81,4 +84,3 @@ export interface UploadResult {
   url: string;
   path: string;
 }
-

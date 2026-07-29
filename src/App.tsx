@@ -33,6 +33,17 @@ import { AdminLogin } from './pages/AdminLogin';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { CatalogProduct } from './types';
 import { fetchProductsFromFirestore } from './services/productService';
+import { CataloguePersonalization } from './features/personalization/CataloguePersonalization';
+import { rankCatalogueProducts } from './features/personalization/ranking';
+import {
+  CataloguePreferences,
+  CataloguePreferencesInput,
+} from './features/personalization/types';
+import {
+  disableCataloguePreferences,
+  fetchCataloguePreferences,
+  saveCataloguePreferences,
+} from './services/personalizationService';
 
 // Banner image imports
 import carrotsImg from './assets/images/1.webp';
@@ -221,6 +232,10 @@ export default function App() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const [cataloguePreferences, setCataloguePreferences] = useState<CataloguePreferences | null>(null);
+  const [personalizationLoading, setPersonalizationLoading] = useState<boolean>(true);
+  const [personalizationSaving, setPersonalizationSaving] = useState<boolean>(false);
+  const [personalizationError, setPersonalizationError] = useState<string | null>(null);
   const [reports, setReports] = useState<LabReport[]>([]);
   const [myInquiries, setMyInquiries] = useState<Inquiry[]>([]);
 
@@ -595,6 +610,50 @@ export default function App() {
     setAuthError(null);
   };
 
+  const handleSaveCataloguePreferences = async (
+    preferences: CataloguePreferencesInput
+  ) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      await handleLogin();
+      throw new Error('Sign in is required to save catalogue preferences.');
+    }
+
+    setPersonalizationSaving(true);
+    setPersonalizationError(null);
+    try {
+      const savedPreferences = await saveCataloguePreferences(currentUser.uid, preferences);
+      setCataloguePreferences(savedPreferences);
+    } catch (error: any) {
+      const message =
+        error?.message || 'We could not save your catalogue preferences. Please try again.';
+      setPersonalizationError(message);
+      throw error;
+    } finally {
+      setPersonalizationSaving(false);
+    }
+  };
+
+  const handleDisableCataloguePreferences = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    setPersonalizationSaving(true);
+    setPersonalizationError(null);
+    try {
+      await disableCataloguePreferences(currentUser.uid);
+      setCataloguePreferences((current) =>
+        current ? { ...current, enabled: false } : null
+      );
+    } catch (error: any) {
+      setPersonalizationError(
+        error?.message || 'We could not disable personalization. Please try again.'
+      );
+    } finally {
+      setPersonalizationSaving(false);
+    }
+  };
+
   // Handle Logout
   const handleLogout = async () => {
     try {
@@ -694,6 +753,21 @@ export default function App() {
       if (currentUser) {
         await syncUserSession(currentUser);
         await fetchMyInquiries(currentUser);
+        setPersonalizationLoading(true);
+        setPersonalizationError(null);
+        try {
+          const savedPreferences = await fetchCataloguePreferences(currentUser.uid);
+          setCataloguePreferences(savedPreferences);
+        } catch (error: any) {
+          setPersonalizationError(
+            error?.message || 'We could not load your catalogue preferences.'
+          );
+        } finally {
+          setPersonalizationLoading(false);
+        }
+      } else {
+        setCataloguePreferences(null);
+        setPersonalizationLoading(false);
       }
       setLoading(false);
     });
@@ -1639,6 +1713,16 @@ export default function App() {
 
         {/* 8. Interactive Produce Catalog & Workspace Area */}
         <section id="catalog-workspace" className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 box-border overflow-hidden">
+          <CataloguePersonalization
+            preferences={cataloguePreferences}
+            isAuthenticated={Boolean(auth.currentUser)}
+            isLoading={personalizationLoading}
+            isSaving={personalizationSaving}
+            error={personalizationError}
+            onSignIn={handleLogin}
+            onSave={handleSaveCataloguePreferences}
+            onDisable={handleDisableCataloguePreferences}
+          />
           
           {/* Workspace Tabs Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[#183b2b]/20 mb-8 w-full max-w-full min-w-0">
@@ -1823,7 +1907,12 @@ export default function App() {
                     return matchesCategory && matchesSearch;
                   });
 
-                  if (filteredProducts.length === 0) {
+                  const rankedProducts = rankCatalogueProducts(
+                    filteredProducts,
+                    cataloguePreferences
+                  );
+
+                  if (rankedProducts.length === 0) {
                     return (
                       <div className="bg-white border border-[#e9e3d5] p-12 text-center space-y-3">
                         <Sprout className="w-8 h-8 text-[#79966e]/50 mx-auto" />
@@ -1843,7 +1932,7 @@ export default function App() {
 
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {filteredProducts.map((prod) => {
+                      {rankedProducts.map((prod) => {
                         const priceRange = getProductPriceRange(prod);
                         const farmSource = getProductFarmSource(prod);
                         const weeklyStatus = getProductWeeklyTestStatus(prod);

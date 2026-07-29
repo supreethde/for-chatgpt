@@ -38,6 +38,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Optional catalogue personalization, owned exclusively by the signed-in user.
+    match /cataloguePreferences/{userId} {
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
     // Inquiries Collection
     match /inquiries/{inquiryId} {
       allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -51,4 +56,3 @@ service cloud.firestore {
     }
   }
 }
-

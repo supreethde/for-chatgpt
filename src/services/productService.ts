@@ -95,6 +95,11 @@ export async function fetchProductsFromFirestore(): Promise<CatalogProduct[]> {
         images: Array.isArray(data.images) ? data.images : [],
         variants: normalizedVariants,
         isActive: data.isActive ?? data.active ?? true,
+        featuredProduct: data.featuredProduct === true,
+        promotionalPriority: ['low', 'medium', 'high'].includes(data.promotionalPriority)
+          ? data.promotionalPriority
+          : 'none',
+        excludeFromRecommendations: data.excludeFromRecommendations === true,
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
         updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || new Date().toISOString()),
         // Preserve optional fields if present in Firestore
@@ -178,6 +183,9 @@ export async function addProductToFirestore(product: CatalogProduct): Promise<vo
       variants: formatVariantsForFirestore(product.variants),
       isActive: product.isActive,
       active: product.isActive,
+      featuredProduct: product.featuredProduct === true,
+      promotionalPriority: product.promotionalPriority || 'none',
+      excludeFromRecommendations: product.excludeFromRecommendations === true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -228,6 +236,9 @@ export async function updateProductInFirestore(product: CatalogProduct, oldSlug?
         variants: formatVariantsForFirestore(product.variants),
         isActive: product.isActive,
         active: product.isActive,
+        featuredProduct: product.featuredProduct === true,
+        promotionalPriority: product.promotionalPriority || 'none',
+        excludeFromRecommendations: product.excludeFromRecommendations === true,
         createdAt: product.createdAt ? new Date(product.createdAt) : serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -257,6 +268,9 @@ export async function updateProductInFirestore(product: CatalogProduct, oldSlug?
         variants: formatVariantsForFirestore(product.variants),
         isActive: product.isActive,
         active: product.isActive,
+        featuredProduct: product.featuredProduct === true,
+        promotionalPriority: product.promotionalPriority || 'none',
+        excludeFromRecommendations: product.excludeFromRecommendations === true,
         updatedAt: serverTimestamp(),
       };
 
