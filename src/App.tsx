@@ -1849,6 +1849,7 @@ export default function App() {
                         const weeklyStatus = getProductWeeklyTestStatus(prod);
                         const description = getProductDescription(prod);
                         const currentQty = estimateQuantities[prod.id] || 0;
+                        const primaryImage = prod.images?.[0];
 
                         return (
                           <div 
@@ -1857,6 +1858,20 @@ export default function App() {
                             onClick={() => setSelectedProduct(prod)}
                           >
                             <div>
+                              {primaryImage && (
+                                <div className="aspect-[4/3] w-full overflow-hidden rounded-t-xl bg-[#f4f0e7] mb-4">
+                                  <img
+                                    src={primaryImage}
+                                    alt={prod.name}
+                                    width={800}
+                                    height={600}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+
                               <div className="flex justify-between items-start gap-4 mb-2">
                                 <span className="text-[10px] font-mono tracking-wider uppercase text-[#f48b4d] bg-[#f48b4d]/10 px-2 py-0.5 font-bold">
                                   {prod.category}
