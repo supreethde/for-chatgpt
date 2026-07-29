@@ -44,7 +44,7 @@ export interface CatalogProduct {
   description: string; // ~80-120 words short description
   regionalNameKannada?: string;
   regionalNameHindi?: string;
-  images: string[]; // Up to 5 product image URLs
+  images: string[]; // Exactly 4 URLs: botanical, real product, benefits, why organic
   variants: ProductVariant[];
   isActive: boolean;
   featuredProduct?: boolean;
