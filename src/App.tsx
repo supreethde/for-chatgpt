@@ -22,7 +22,6 @@ import {
   Lock,
   AlertCircle,
   ChevronDown,
-  Check,
   Truck,
   MessageSquare
 } from 'lucide-react';
@@ -36,6 +35,11 @@ import {
   CataloguePreferences,
   CataloguePreferencesInput,
 } from './features/personalization/types';
+import {
+  DeliveryLocationModal,
+  SavedDeliveryLocation,
+} from './features/delivery/DeliveryLocationModal';
+import { DeliveryServiceStatus } from './features/delivery/serviceArea';
 import { ProductCard } from './features/products/ProductCard';
 import { ProductDetailPage } from './features/products/ProductDetailPage';
 import { CategoryPage } from './features/seo/CategoryPage';
@@ -180,9 +184,11 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Delivery Location State
-  const [selectedLocation, setSelectedLocation] = useState<string>('Guest Outlet: Select delivery location');
+  const [selectedLocation, setSelectedLocation] =
+    useState<SavedDeliveryLocation | null>(null);
+  const [deliveryServiceStatus, setDeliveryServiceStatus] =
+    useState<DeliveryServiceStatus>('unknown');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
-  const [customPincode, setCustomPincode] = useState<string>('');
 
   // Workspace Tabs State
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
@@ -239,6 +245,10 @@ export default function App() {
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
   const visibleBannerCount = isMobile ? 1 : 2;
+  const bannerCardWidth = isMobile
+    ? bannerSlideWidth
+    : Math.max(0, (bannerSlideWidth - 24) / 2);
+  const bannerViewportHeight = bannerCardWidth * 10 / 16;
 
   const dragStartXRef = useRef<number>(0);
   const dragStartYRef = useRef<number>(0);
@@ -822,6 +832,9 @@ export default function App() {
   // Submit Inquiry Form
   const handleSubmitInquiry = async (e: FormEvent) => {
     e.preventDefault();
+    if (deliveryServiceStatus === 'unsupported') {
+      return;
+    }
     if (!user) {
       handleLogin();
       return;
@@ -869,6 +882,15 @@ export default function App() {
 
   // Cart Items Count
   const cartItemCount = Object.values(estimateQuantities).filter((q: number) => q > 0).length;
+  const cartTotal = cartItemCount > 0 ? getEstimatedTotal() : 0;
+  const canSendCartInquiry =
+    cartItemCount > 0 && deliveryServiceStatus !== 'unsupported';
+
+  const handleSaveDeliveryLocation = (location: SavedDeliveryLocation) => {
+    setSelectedLocation(location);
+    setDeliveryServiceStatus('supported');
+    setIsLocationModalOpen(false);
+  };
 
   const normalizedPath = currentPath;
 
@@ -1019,108 +1041,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Location Selector Modal */}
-      <AnimatePresence>
-        {isLocationModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
-            onClick={() => setIsLocationModalOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-stone-200 text-stone-800 relative space-y-4"
-            >
-              <button
-                type="button"
-                onClick={() => setIsLocationModalOpen(false)}
-                className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 transition-colors p-1 rounded-lg hover:bg-stone-100"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-[#183b2b]/10 text-[#183b2b] border border-[#183b2b]/20">
-                  <MapPin className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-serif text-lg font-bold text-[#183b2b]">Select Delivery Location</h3>
-                  <p className="text-xs text-stone-500">Scheduled 6 AM kitchen deliveries across Bengaluru</p>
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2">
-                {[
-                  { name: 'Koramangala Partner Kitchen', pin: '560034' },
-                  { name: 'Indiranagar Central Kitchen', pin: '560038' },
-                  { name: 'Whitefield Central Outlet', pin: '560066' },
-                  { name: 'HSR Layout Dark Kitchen', pin: '560102' },
-                  { name: 'M.G. Road Hotel Hub', pin: '560001' }
-                ].map((loc) => {
-                  const locString = `${loc.name} (${loc.pin})`;
-                  const isSelected = selectedLocation === locString;
-                  return (
-                    <button
-                      key={loc.pin}
-                      type="button"
-                      onClick={() => {
-                        setSelectedLocation(locString);
-                        setIsLocationModalOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-[#183b2b] bg-[#183b2b]/5 font-semibold text-[#183b2b]'
-                          : 'border-stone-200 hover:border-[#183b2b]/40 hover:bg-stone-50 text-stone-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <MapPin className={`w-4 h-4 ${isSelected ? 'text-[#183b2b]' : 'text-stone-400'}`} />
-                        <div>
-                          <div className="font-medium text-stone-900">{loc.name}</div>
-                          <div className="text-[10px] text-stone-500">Pincode: {loc.pin} • Next 6 AM Slot</div>
-                        </div>
-                      </div>
-                      {isSelected && <Check className="w-4 h-4 text-[#183b2b]" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="pt-2 border-t border-stone-200 space-y-2">
-                <label className="text-xs font-medium text-stone-700 block">Or enter custom pincode / landmark</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. 560008 or Indiranagar 100ft Rd"
-                    value={customPincode}
-                    onChange={(e) => setCustomPincode(e.target.value)}
-                    className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded-xl focus:outline-none focus:border-[#183b2b]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (customPincode.trim()) {
-                        setSelectedLocation(`Outlet: ${customPincode.trim()}`);
-                        setIsLocationModalOpen(false);
-                        setCustomPincode('');
-                      }
-                    }}
-                    className="bg-[#183b2b] text-[#f4f0e7] px-4 py-2 text-xs font-semibold rounded-xl hover:bg-[#25543e] transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DeliveryLocationModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        onSave={handleSaveDeliveryLocation}
+        onServiceStatusChange={setDeliveryServiceStatus}
+      />
 
       {/* 2. Site Header */}
       <header className="site-header-container">
@@ -1160,7 +1086,7 @@ export default function App() {
                   Delivery tomorrow
                 </span>
                 <span className="text-[11px] text-[#55705c] truncate max-w-[140px] xl:max-w-[190px] flex items-center gap-0.5">
-                  {selectedLocation}
+                  {selectedLocation?.label || 'Select delivery location'}
                   <ChevronDown className="w-3 h-3 text-[#183b2b] shrink-0" />
                 </span>
               </div>
@@ -1224,9 +1150,15 @@ export default function App() {
                   </div>
                   <div className="cart-dropdown-body">
                     {cartItemCount === 0 ? (
-                      <p className="text-xs text-[#55705c] py-4 text-center">
-                        Your inquiry cart is empty. Click "+ Add 10kg" on any produce item below to add it.
-                      </p>
+                      <div className="py-5 text-center">
+                        <ShoppingCart className="mx-auto h-6 w-6 text-[#79966e]" aria-hidden="true" />
+                        <p className="mt-2 text-sm font-semibold text-[#183b2b]">
+                          Your harvest cart is empty
+                        </p>
+                        <p className="mt-1 text-xs text-[#55705c]">
+                          Add produce from the catalogue to prepare an inquiry.
+                        </p>
+                      </div>
                     ) : (
                       products.map((prod) => {
                         const qty = estimateQuantities[prod.id] || 0;
@@ -1251,19 +1183,38 @@ export default function App() {
                   </div>
                   <div className="cart-dropdown-footer">
                     <div className="cart-total-row">
-                      <span>Estimated Total</span>
-                      <strong>₹{getEstimatedTotal().toLocaleString('en-IN')}</strong>
+                      <span>Subtotal</span>
+                      <strong>₹{cartTotal.toLocaleString('en-IN')}</strong>
                     </div>
-                    <a 
-                      href="#contact" 
-                      onClick={() => {
-                        setIsCartOpen(false);
-                        setActiveTab('inquiries');
-                      }}
-                      className="button button-dark cart-checkout-btn"
-                    >
-                      Proceed to Inquiry <span>→</span>
-                    </a>
+                    <div className="cart-total-row cart-total-row-final">
+                      <span>Total</span>
+                      <strong>₹{cartTotal.toLocaleString('en-IN')}</strong>
+                    </div>
+                    {deliveryServiceStatus === 'unsupported' && (
+                      <p className="mb-3 text-xs font-semibold text-[#9a4d2f]" role="status">
+                        We're expanding to your area soon.
+                      </p>
+                    )}
+                    {canSendCartInquiry ? (
+                      <a
+                        href="#contact"
+                        onClick={() => {
+                          setIsCartOpen(false);
+                          setActiveTab('inquiries');
+                        }}
+                        className="button button-dark cart-checkout-btn"
+                      >
+                        Send Inquiry <span>→</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="button button-dark cart-checkout-btn"
+                      >
+                        Send Inquiry <span>→</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1290,7 +1241,9 @@ export default function App() {
                       referrerPolicy="no-referrer"
                     />
                   ) : user ? (
-                    <span className="profile-avatar">{user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}</span>
+                    <span className="profile-avatar">
+                      <UserIcon className="h-5 w-5" aria-hidden="true" />
+                    </span>
                   ) : (
                     <UserIcon className="w-5 h-5 text-[#f4f0e7]" />
                   )}
@@ -1301,7 +1254,7 @@ export default function App() {
                     <>
                       <div className="profile-dropdown-header">
                         <div className="profile-avatar-large">
-                          {user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}
+                          <UserIcon className="h-5 w-5" aria-hidden="true" />
                         </div>
                         <div className="profile-user-info">
                           <strong>{user.displayName || 'Chef Partner'}</strong>
@@ -1358,7 +1311,7 @@ export default function App() {
                     <>
                       <div className="profile-dropdown-header">
                         <div className="profile-avatar-large bg-[#183b2b] text-[#f4f0e7] flex items-center justify-center font-bold">
-                          ST
+                          <UserIcon className="h-5 w-5" aria-hidden="true" />
                         </div>
                         <div className="profile-user-info">
                           <strong>Partner Portal</strong>
@@ -1423,7 +1376,7 @@ export default function App() {
                   <span className="mobile-delivery-tag">6 AM Slot</span>
                 </div>
                 <div className="mobile-delivery-sub">
-                  {selectedLocation || 'Select delivery location'}
+                  {selectedLocation?.label || 'Select delivery location'}
                 </div>
               </div>
             </div>
@@ -1589,10 +1542,10 @@ export default function App() {
           <div 
             ref={viewportRef}
             className="moving-banners-container"
-            style={isMobile && bannerSlideWidth > 0 ? {
+            style={bannerCardWidth > 0 ? {
               aspectRatio: 'auto',
-              height: `${bannerSlideWidth * 9 / 16}px`,
-              visibility: isMobileBannerReady ? 'visible' : 'hidden'
+              height: `${bannerViewportHeight}px`,
+              visibility: isMobile && !isMobileBannerReady ? 'hidden' : 'visible'
             } : isMobile ? { visibility: 'hidden' } : undefined}
             tabIndex={0}
             role="region"
@@ -1608,49 +1561,51 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
           >
-            <div
-              className={`moving-banners-track ${isDragging ? 'is-dragging' : ''}`}
-              style={{
-                transform: isMobile && bannerSlideWidth > 0
-                  ? `translate3d(${-(bannerIndex * (bannerSlideWidth + 24)) + dragOffset}px, 0, 0)`
-                  : `translateX(calc(-1 * ${bannerIndex} * ((100cqw - 2 * clamp(22px, 5vw, 76px) + 24px) / 2) + ${dragOffset}px))`,
-                transition: isDragging || !isTransitioning || (isMobile && !isMobileBannerReady)
-                  ? 'none'
-                  : 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)'
-              }}
-              onTransitionEnd={handleBannerTransitionEnd}
-            >
-              {loopedBannerItems.map((item, slideIndex) => {
-                const shouldLoadImage =
-                  slideIndex >= bannerIndex - 1 &&
-                  slideIndex <= bannerIndex + visibleBannerCount;
-                const isPrimaryImage = slideIndex === bannerItems.length;
+            <div className="moving-banners-viewport">
+              <div
+                className={`moving-banners-track ${isDragging ? 'is-dragging' : ''}`}
+                style={{
+                  transform: isMobile && bannerSlideWidth > 0
+                    ? `translate3d(${-(bannerIndex * (bannerSlideWidth + 24)) + dragOffset}px, 0, 0)`
+                    : `translateX(calc(-1 * ${bannerIndex} * ((100cqw + 24px) / 2) + ${dragOffset}px))`,
+                  transition: isDragging || !isTransitioning || (isMobile && !isMobileBannerReady)
+                    ? 'none'
+                    : 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)'
+                }}
+                onTransitionEnd={handleBannerTransitionEnd}
+              >
+                {loopedBannerItems.map((item, slideIndex) => {
+                  const shouldLoadImage =
+                    slideIndex >= bannerIndex - 1 &&
+                    slideIndex <= bannerIndex + visibleBannerCount;
+                  const isPrimaryImage = slideIndex === bannerItems.length;
 
-                return (
-                <div
-                  key={`banner-${slideIndex}`}
-                  className="moving-banner-item"
-                  style={isMobile && bannerSlideWidth > 0 ? {
-                    flex: `0 0 ${bannerSlideWidth}px`,
-                    width: `${bannerSlideWidth}px`,
-                    minWidth: `${bannerSlideWidth}px`
-                  } : undefined}
-                >
-                  {shouldLoadImage && (
-                    <img
-                      src={item.image}
-                      alt={item.alt}
-                      width={1600}
-                      height={900}
-                      loading={isPrimaryImage ? 'eager' : 'lazy'}
-                      fetchPriority={isPrimaryImage ? 'high' : 'auto'}
-                      decoding="async"
-                      draggable="false"
-                    />
-                  )}
-                </div>
-                );
-              })}
+                  return (
+                    <div
+                      key={`banner-${slideIndex}`}
+                      className="moving-banner-item"
+                      style={isMobile && bannerSlideWidth > 0 ? {
+                        flex: `0 0 ${bannerSlideWidth}px`,
+                        width: `${bannerSlideWidth}px`,
+                        minWidth: `${bannerSlideWidth}px`
+                      } : undefined}
+                    >
+                      {shouldLoadImage && (
+                        <img
+                          src={item.image}
+                          alt={item.alt}
+                          width={2400}
+                          height={1500}
+                          loading={isPrimaryImage ? 'eager' : 'lazy'}
+                          fetchPriority={isPrimaryImage ? 'high' : 'auto'}
+                          decoding="async"
+                          draggable="false"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -2221,6 +2176,16 @@ export default function App() {
                       </div>
                     )}
 
+                    {deliveryServiceStatus === 'unsupported' && (
+                      <div
+                        className="flex items-center gap-2 border border-[#f48b4d]/40 bg-[#f48b4d]/10 p-4 text-xs font-semibold text-[#9a4d2f]"
+                        role="status"
+                      >
+                        <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        We're expanding to your area soon.
+                      </div>
+                    )}
+
                     <form onSubmit={handleSubmitInquiry} className="space-y-4">
                       <div>
                         <label className="block text-xs font-mono font-bold uppercase text-[#183b2b] mb-1">RESTAURANT / CAFE NAME</label>
@@ -2256,8 +2221,11 @@ export default function App() {
 
                       <button
                         type="submit"
-                        disabled={submittingInquiry}
-                        className="button button-dark w-full text-xs font-bold py-3 flex items-center justify-center gap-2"
+                        disabled={
+                          submittingInquiry ||
+                          deliveryServiceStatus === 'unsupported'
+                        }
+                        className="button button-dark w-full text-xs font-bold py-3 flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         {submittingInquiry ? (
                           <Loader2 className="w-4 h-4 animate-spin text-[#c9dc74]" />
