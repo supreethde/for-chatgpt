@@ -1,5 +1,5 @@
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore/lite';
+import { firestoreDb as db } from '../lib/firebase-firestore';
 import {
   CataloguePreferences,
   CataloguePreferencesInput,

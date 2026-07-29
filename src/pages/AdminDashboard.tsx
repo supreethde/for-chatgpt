@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth } from '../lib/firebase-auth';
 import { LogOut, ArrowLeft, Package, Loader2, AlertCircle, RefreshCw, Plus } from 'lucide-react';
 import { CatalogProduct } from '../types';
 import { ProductList } from '../components/admin/ProductList';
@@ -415,5 +415,4 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 };
-
 
