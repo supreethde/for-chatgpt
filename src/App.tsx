@@ -236,13 +236,14 @@ export default function App() {
 
   // Moving Banner Carousel Index & Responsive & Drag/Interaction state
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [bannerViewportWidth, setBannerViewportWidth] = useState<number>(0);
+  const [bannerSlideWidth, setBannerSlideWidth] = useState<number>(0);
   const [bannerIndex, setBannerIndex] = useState(5); // Start at middle set (Set 1)
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [isMobileBannerReady, setIsMobileBannerReady] = useState(false);
 
   const [isMobile, setIsMobile] = useState<boolean>(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -255,13 +256,30 @@ export default function App() {
   const isHorizontalDragRef = useRef<boolean | null>(null);
   const wheelAccumulatorRef = useRef<number>(0);
   const wheelLockRef = useRef<boolean>(false);
+  const mobileBannerReadyFrameRef = useRef<number | null>(null);
+  const hasMeasuredMobileBannerRef = useRef(false);
 
   useEffect(() => {
+    const updateBannerSlideWidth = () => {
+      if (!viewportRef.current) return;
+
+      const styles = window.getComputedStyle(viewportRef.current);
+      const horizontalPadding =
+        Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
+
+      setBannerSlideWidth(Math.max(0, viewportRef.current.clientWidth - horizontalPadding));
+
+      if (window.innerWidth < 768 && !hasMeasuredMobileBannerRef.current) {
+        hasMeasuredMobileBannerRef.current = true;
+        mobileBannerReadyFrameRef.current = window.requestAnimationFrame(() => {
+          setIsMobileBannerReady(true);
+        });
+      }
+    };
+
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
-      if (viewportRef.current) {
-        setBannerViewportWidth(viewportRef.current.clientWidth);
-      }
+      updateBannerSlideWidth();
     };
 
     handleResize();
@@ -269,11 +287,7 @@ export default function App() {
 
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && viewportRef.current) {
-      resizeObserver = new ResizeObserver(() => {
-        if (viewportRef.current) {
-          setBannerViewportWidth(viewportRef.current.clientWidth);
-        }
-      });
+      resizeObserver = new ResizeObserver(updateBannerSlideWidth);
       resizeObserver.observe(viewportRef.current);
     }
 
@@ -281,6 +295,9 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       if (resizeObserver) {
         resizeObserver.disconnect();
+      }
+      if (mobileBannerReadyFrameRef.current !== null) {
+        window.cancelAnimationFrame(mobileBannerReadyFrameRef.current);
       }
     };
   }, []);
@@ -1421,6 +1438,11 @@ export default function App() {
           <div 
             ref={viewportRef}
             className="moving-banners-container"
+            style={isMobile && bannerSlideWidth > 0 ? {
+              aspectRatio: 'auto',
+              height: `${bannerSlideWidth * 9 / 16}px`,
+              visibility: isMobileBannerReady ? 'visible' : 'hidden'
+            } : isMobile ? { visibility: 'hidden' } : undefined}
             tabIndex={0}
             role="region"
             aria-label="Promotional Banners Carousel"
@@ -1435,13 +1457,15 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
           >
-            <div 
+            <div
               className={`moving-banners-track ${isDragging ? 'is-dragging' : ''}`}
               style={{
-                transform: isMobile && bannerViewportWidth > 0
-                  ? `translate3d(${-(bannerIndex * bannerViewportWidth) + dragOffset}px, 0, 0)`
+                transform: isMobile && bannerSlideWidth > 0
+                  ? `translate3d(${-(bannerIndex * (bannerSlideWidth + 24)) + dragOffset}px, 0, 0)`
                   : `translateX(calc(-1 * ${bannerIndex} * ((100cqw - 2 * clamp(22px, 5vw, 76px) + 24px) / 2) + ${dragOffset}px))`,
-                transition: isDragging || !isTransitioning ? 'none' : 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)'
+                transition: isDragging || !isTransitioning || (isMobile && !isMobileBannerReady)
+                  ? 'none'
+                  : 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)'
               }}
               onTransitionEnd={handleBannerTransitionEnd}
             >
@@ -1452,13 +1476,13 @@ export default function App() {
                 const isPrimaryImage = slideIndex === bannerItems.length;
 
                 return (
-                <div 
+                <div
                   key={`banner-${slideIndex}`}
                   className="moving-banner-item"
-                  style={isMobile && bannerViewportWidth > 0 ? {
-                    flex: `0 0 ${bannerViewportWidth}px`,
-                    width: `${bannerViewportWidth}px`,
-                    minWidth: `${bannerViewportWidth}px`
+                  style={isMobile && bannerSlideWidth > 0 ? {
+                    flex: `0 0 ${bannerSlideWidth}px`,
+                    width: `${bannerSlideWidth}px`,
+                    minWidth: `${bannerSlideWidth}px`
                   } : undefined}
                 >
                   {shouldLoadImage && (
@@ -1479,7 +1503,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="banner-dots">
+          <div
+            className="banner-dots"
+            style={isMobile && !isMobileBannerReady ? { visibility: 'hidden' } : undefined}
+          >
             {bannerItems.map((_, idx) => {
               const activeDotIndex = ((bannerIndex % bannerItems.length) + bannerItems.length) % bannerItems.length;
               return (
