@@ -35,11 +35,11 @@ import { CatalogProduct } from './types';
 import { fetchProductsFromFirestore } from './services/productService';
 
 // Banner image imports
-import carrotsImg from './assets/images/1.png';
-import orangesImg from './assets/images/2.png';
-import spinachImg from './assets/images/3.png';
-import microgreensImg from './assets/images/4.png';
-import tomatoesImg from './assets/images/5.png';
+import carrotsImg from './assets/images/1.webp';
+import orangesImg from './assets/images/2.webp';
+import spinachImg from './assets/images/3.webp';
+import microgreensImg from './assets/images/4.webp';
+import tomatoesImg from './assets/images/5.webp';
 
 function getProductPriceRange(prod: CatalogProduct & Record<string, any>): string {
   if (prod.priceRange && typeof prod.priceRange === 'string') {
@@ -112,13 +112,15 @@ const bannerItems = [
   { image: tomatoesImg, title: "Vined Cherry Tomatoes", alt: "Vine-Ripe Tomatoes" }
 ];
 
+const loopedBannerItems = [...bannerItems, ...bannerItems, ...bannerItems];
+
 const categoryCards = [
-  { id: 'vegetables', name: 'Vegetables', image: '/vegetables-1.png', bgClass: 'circle-bg-1' },
-  { id: 'fruits', name: 'Fruits', image: '/fruits-1.png', bgClass: 'circle-bg-2' },
-  { id: 'leafy-greens', name: 'Leafy Greens', image: '/leafygreens-1.png', bgClass: 'circle-bg-3' },
-  { id: 'microgreens', name: 'Microgreens', image: '/microgreens-1.png', bgClass: 'circle-bg-4' },
-  { id: 'mushrooms', name: 'Mushrooms', image: '/mushrooms-1.png', bgClass: 'circle-bg-5' },
-  { id: 'exotics', name: 'Exotics', image: '/exotics-1.png', bgClass: 'circle-bg-6' },
+  { id: 'vegetables', name: 'Vegetables', image: '/vegetables-1.webp', bgClass: 'circle-bg-1' },
+  { id: 'fruits', name: 'Fruits', image: '/fruits-1.webp', bgClass: 'circle-bg-2' },
+  { id: 'leafy-greens', name: 'Leafy Greens', image: '/leafygreens-1.webp', bgClass: 'circle-bg-3' },
+  { id: 'microgreens', name: 'Microgreens', image: '/microgreens-1.webp', bgClass: 'circle-bg-4' },
+  { id: 'mushrooms', name: 'Mushrooms', image: '/mushrooms-1.webp', bgClass: 'circle-bg-5' },
+  { id: 'exotics', name: 'Exotics', image: '/exotics-1.webp', bgClass: 'circle-bg-6' },
 ];
 
 const faqData = [
@@ -245,6 +247,7 @@ export default function App() {
   const [isMobile, setIsMobile] = useState<boolean>(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
+  const visibleBannerCount = isMobile ? 1 : 2;
 
   const dragStartXRef = useRef<number>(0);
   const dragStartYRef = useRef<number>(0);
@@ -1110,7 +1113,15 @@ export default function App() {
                   aria-label="User Profile"
                 >
                   {user?.photoURL ? (
-                    <img src={user.photoURL} alt="Avatar" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                    <img
+                      src={user.photoURL}
+                      alt="Avatar"
+                      width={36}
+                      height={36}
+                      decoding="async"
+                      className="w-full h-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
                   ) : user ? (
                     <span className="profile-avatar">{user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'ST'}</span>
                   ) : (
@@ -1390,6 +1401,9 @@ export default function App() {
                     <img
                       src={cat.image}
                       alt={cat.name}
+                      width={256}
+                      height={256}
+                      decoding="async"
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover object-center"
                       style={{ objectFit: 'cover', objectPosition: 'center', width: '100%', height: '100%' }}
@@ -1431,10 +1445,15 @@ export default function App() {
               }}
               onTransitionEnd={handleBannerTransitionEnd}
             >
-              {/* Set 0 (Prefix set for reverse looping) */}
-              {bannerItems.map((item, idx) => (
+              {loopedBannerItems.map((item, slideIndex) => {
+                const shouldLoadImage =
+                  slideIndex >= bannerIndex - 1 &&
+                  slideIndex <= bannerIndex + visibleBannerCount;
+                const isPrimaryImage = slideIndex === bannerItems.length;
+
+                return (
                 <div 
-                  key={`set0-${idx}`} 
+                  key={`banner-${slideIndex}`}
                   className="moving-banner-item"
                   style={isMobile && bannerViewportWidth > 0 ? {
                     flex: `0 0 ${bannerViewportWidth}px`,
@@ -1442,37 +1461,21 @@ export default function App() {
                     minWidth: `${bannerViewportWidth}px`
                   } : undefined}
                 >
-                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
+                  {shouldLoadImage && (
+                    <img
+                      src={item.image}
+                      alt={item.alt}
+                      width={1600}
+                      height={900}
+                      loading={isPrimaryImage ? 'eager' : 'lazy'}
+                      fetchPriority={isPrimaryImage ? 'high' : 'auto'}
+                      decoding="async"
+                      draggable="false"
+                    />
+                  )}
                 </div>
-              ))}
-              {/* Set 1 (Main active set) */}
-              {bannerItems.map((item, idx) => (
-                <div 
-                  key={`set1-${idx}`} 
-                  className="moving-banner-item"
-                  style={isMobile && bannerViewportWidth > 0 ? {
-                    flex: `0 0 ${bannerViewportWidth}px`,
-                    width: `${bannerViewportWidth}px`,
-                    minWidth: `${bannerViewportWidth}px`
-                  } : undefined}
-                >
-                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
-                </div>
-              ))}
-              {/* Set 2 (Suffix set for forward looping) */}
-              {bannerItems.map((item, idx) => (
-                <div 
-                  key={`set2-${idx}`} 
-                  className="moving-banner-item"
-                  style={isMobile && bannerViewportWidth > 0 ? {
-                    flex: `0 0 ${bannerViewportWidth}px`,
-                    width: `${bannerViewportWidth}px`,
-                    minWidth: `${bannerViewportWidth}px`
-                  } : undefined}
-                >
-                  <img src={item.image} alt={item.alt} loading="lazy" draggable="false" />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
