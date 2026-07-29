@@ -92,6 +92,15 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   );
 
   const [isActive, setIsActive] = useState<boolean>(product?.isActive ?? true);
+  const [featuredProduct, setFeaturedProduct] = useState<boolean>(
+    product?.featuredProduct ?? false
+  );
+  const [promotionalPriority, setPromotionalPriority] = useState<
+    'none' | 'low' | 'medium' | 'high'
+  >(product?.promotionalPriority || 'none');
+  const [excludeFromRecommendations, setExcludeFromRecommendations] = useState<boolean>(
+    product?.excludeFromRecommendations ?? false
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [autoSlug, setAutoSlug] = useState<boolean>(!product?.slug);
 
@@ -366,6 +375,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       images: cleanedImages,
       variants: formattedVariants,
       isActive,
+      featuredProduct,
+      promotionalPriority,
+      excludeFromRecommendations,
       createdAt: product?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -549,6 +561,52 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
             >
               {isActive ? '✓ Active' : '✕ Inactive'}
             </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3.5 md:grid-cols-3">
+            <label className="flex items-start gap-2.5 text-xs text-stone-700">
+              <input
+                type="checkbox"
+                checked={featuredProduct}
+                onChange={(event) => setFeaturedProduct(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-emerald-800"
+              />
+              <span>
+                <strong className="block text-stone-900">Featured Product</strong>
+                Optional recommendation boost.
+              </span>
+            </label>
+
+            <label className="text-xs font-semibold text-stone-700">
+              Promotional Priority
+              <select
+                value={promotionalPriority}
+                onChange={(event) =>
+                  setPromotionalPriority(
+                    event.target.value as 'none' | 'low' | 'medium' | 'high'
+                  )
+                }
+                className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-normal focus:border-emerald-600 focus:outline-none"
+              >
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+
+            <label className="flex items-start gap-2.5 text-xs text-stone-700">
+              <input
+                type="checkbox"
+                checked={excludeFromRecommendations}
+                onChange={(event) => setExcludeFromRecommendations(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-emerald-800"
+              />
+              <span>
+                <strong className="block text-stone-900">Exclude From Recommendations</strong>
+                Product stays visible but is not promoted.
+              </span>
+            </label>
           </div>
         </div>
 
