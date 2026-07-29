@@ -28,22 +28,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { auth, googleAuthProvider } from './lib/firebase';
-import { AdminLogin } from './pages/AdminLogin';
-import { AdminDashboard } from './pages/AdminDashboard';
+import { auth, googleAuthProvider } from './lib/firebase-auth';
 import { CatalogProduct } from './types';
-import { fetchProductsFromFirestore } from './services/productService';
 import { CataloguePersonalization } from './features/personalization/CataloguePersonalization';
 import { rankCatalogueProducts } from './features/personalization/ranking';
 import {
   CataloguePreferences,
   CataloguePreferencesInput,
 } from './features/personalization/types';
-import {
-  disableCataloguePreferences,
-  fetchCataloguePreferences,
-  saveCataloguePreferences,
-} from './services/personalizationService';
 import { ProductCard } from './features/products/ProductCard';
 import { ProductDetailPage } from './features/products/ProductDetailPage';
 import { CategoryPage } from './features/seo/CategoryPage';
@@ -605,6 +597,7 @@ export default function App() {
     setPersonalizationSaving(true);
     setPersonalizationError(null);
     try {
+      const { saveCataloguePreferences } = await import('./services/personalizationService');
       const savedPreferences = await saveCataloguePreferences(currentUser.uid, preferences);
       setCataloguePreferences(savedPreferences);
     } catch (error: any) {
@@ -624,6 +617,7 @@ export default function App() {
     setPersonalizationSaving(true);
     setPersonalizationError(null);
     try {
+      const { disableCataloguePreferences } = await import('./services/personalizationService');
       await disableCataloguePreferences(currentUser.uid);
       setCataloguePreferences((current) =>
         current ? { ...current, enabled: false } : null
@@ -653,6 +647,7 @@ export default function App() {
     setProductsLoading(true);
     setProductsError(null);
     try {
+      const { fetchProductsFromFirestore } = await import('./services/productService');
       const data = await fetchProductsFromFirestore();
       console.log(`[Produce Catalog] Loaded ${data.length} products from Firestore collection "products".`);
       setProducts(data);
@@ -675,7 +670,29 @@ export default function App() {
 
   // Load Initial Data
   useEffect(() => {
-    loadProductsFromFirestore();
+    let productsObserver: IntersectionObserver | null = null;
+    const shouldLoadProductsImmediately =
+      currentPath.startsWith('/produce/') || searchQuery.trim().length > 0;
+    const catalogue = document.getElementById('catalog-workspace');
+
+    if (
+      shouldLoadProductsImmediately ||
+      !catalogue ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      void loadProductsFromFirestore();
+    } else {
+      productsObserver = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry.isIntersecting) return;
+          productsObserver?.disconnect();
+          productsObserver = null;
+          void loadProductsFromFirestore();
+        },
+        { rootMargin: '800px 0px' }
+      );
+      productsObserver.observe(catalogue);
+    }
 
     const defaultReports: LabReport[] = [
       {
@@ -739,6 +756,9 @@ export default function App() {
         setPersonalizationLoading(true);
         setPersonalizationError(null);
         try {
+          const { fetchCataloguePreferences } = await import(
+            './services/personalizationService'
+          );
           const savedPreferences = await fetchCataloguePreferences(currentUser.uid);
           setCataloguePreferences(savedPreferences);
         } catch (error: any) {
@@ -755,7 +775,10 @@ export default function App() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      productsObserver?.disconnect();
+      unsubscribe();
+    };
   }, []);
 
   // Calculate dynamic weekly estimate
@@ -848,14 +871,6 @@ export default function App() {
   const cartItemCount = Object.values(estimateQuantities).filter((q: number) => q > 0).length;
 
   const normalizedPath = currentPath;
-
-  if (normalizedPath === '/admin/login') {
-    return <AdminLogin onNavigate={navigateTo} />;
-  }
-
-  if (normalizedPath === '/admin') {
-    return <AdminDashboard user={user} authLoading={loading} onNavigate={navigateTo} />;
-  }
 
   const categoryPathMatch = normalizedPath.match(/^\/produce\/category\/([^/]+)$/);
   if (categoryPathMatch) {

@@ -1,6 +1,6 @@
 import React, { useState, FormEvent } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth } from '../lib/firebase-auth';
 import { Lock, Mail, Loader2, AlertCircle, Sprout, ArrowLeft } from 'lucide-react';
 
 interface AdminLoginProps {

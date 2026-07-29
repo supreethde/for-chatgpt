@@ -241,6 +241,17 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: "spa",
     });
+
+    app.get(["/admin", "/admin/login"], async (req, res, next) => {
+      try {
+        const template = fs.readFileSync(path.join(process.cwd(), "admin.html"), "utf8");
+        const html = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      } catch (error) {
+        next(error);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     app.get("/products/:slug", (req, res) => {

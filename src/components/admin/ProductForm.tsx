@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_TIERS, SourcingTier } from '../../types';
 import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
-import { auth } from '../../lib/firebase';
+import { auth } from '../../lib/firebase-auth';
 import { uploadProductImage, validateImageFile } from '../../lib/storage-utils';
 import { PRODUCT_IMAGE_ROLES } from '../../features/products/productImages';
 

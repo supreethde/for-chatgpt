@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { auth } from './lib/firebase-auth';
 import { AdminLogin } from './pages/AdminLogin';
 import { AdminDashboard } from './pages/AdminDashboard';
 import './index.css';

@@ -6,11 +6,10 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  serverTimestamp,
-  query,
-  orderBy
-} from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+  serverTimestamp
+} from 'firebase/firestore/lite';
+import { auth } from '../lib/firebase-auth';
+import { firestoreDb as db } from '../lib/firebase-firestore';
 import { CatalogProduct } from '../types';
 
 export enum OperationType {

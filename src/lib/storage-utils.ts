@@ -4,7 +4,8 @@ import {
   getDownloadURL, 
   deleteObject 
 } from 'firebase/storage';
-import { storage, auth } from './firebase';
+import { auth } from './firebase-auth';
+import { firebaseStorage as storage } from './firebase-storage';
 import { UploadProgressCallback, UploadResult } from '../types';
 
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
