@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { CatalogProduct } from '../../types';
 import { getProductGallery } from './productImages';
+import { SeoHead } from '../seo/SeoHead';
+import { createProductSchemas, getCategorySeoByName } from '../seo/seo';
 
 interface ProductDetailPageProps {
   product: CatalogProduct | null;
@@ -32,6 +34,7 @@ export function ProductDetailPage({
   onAdd,
 }: ProductDetailPageProps) {
   const gallery = useMemo(() => (product ? getProductGallery(product) : []), [product]);
+  const schemas = useMemo(() => (product ? createProductSchemas(product) : []), [product]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
@@ -72,9 +75,20 @@ export function ProductDetailPage({
   }
 
   const selectedImage = gallery[selectedIndex] || gallery[0];
+  const categorySeo = getCategorySeoByName(product.category);
+  const seoDescription = (product.shortIntro || product.description).slice(0, 160);
 
   return (
     <div className="min-h-screen bg-[#f4f0e7] text-[#183b2b]">
+      <SeoHead
+        title={`${product.name} for Bengaluru Professional Kitchens`}
+        description={seoDescription}
+        canonicalPath={`/produce/${encodeURIComponent(product.slug)}`}
+        image={product.images?.[1] || product.images?.[0]}
+        type="product"
+        schemas={schemas}
+      />
+
       <header className="border-b border-[#183b2b]/15 bg-[#183b2b] text-[#f4f0e7]">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <button
@@ -95,6 +109,13 @@ export function ProductDetailPage({
             Produce Catalogue
           </button>
           <span aria-hidden="true"> / </span>
+          <a
+            href={`/produce/category/${categorySeo.slug}`}
+            className="hover:text-[#183b2b] hover:underline"
+          >
+            {product.category}
+          </a>
+          <span aria-hidden="true"> / </span>
           <span aria-current="page">{product.name}</span>
         </nav>
 
@@ -109,6 +130,7 @@ export function ProductDetailPage({
                     title={selectedImage.title}
                     width={1200}
                     height={1200}
+                    sizes="(max-width: 1023px) calc(100vw - 2rem), 55vw"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
@@ -153,6 +175,7 @@ export function ProductDetailPage({
                       alt=""
                       width={240}
                       height={240}
+                      sizes="(max-width: 639px) 22vw, 8rem"
                       loading="lazy"
                       decoding="async"
                       className="aspect-square h-full w-full object-cover"

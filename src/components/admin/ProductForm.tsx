@@ -269,7 +269,11 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     const newErrors: Record<string, string> = {};
 
     if (!name.trim()) newErrors.name = 'Product name is required';
-    if (!slug.trim()) newErrors.slug = 'URL slug is required';
+    if (!slug.trim()) {
+      newErrors.slug = 'URL slug is required';
+    } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug.trim())) {
+      newErrors.slug = 'Use lowercase letters, numbers and single hyphens only';
+    }
     if (displayOrder === undefined || displayOrder === null || isNaN(displayOrder)) {
       newErrors.displayOrder = 'Display order is required and must be a valid number';
     }

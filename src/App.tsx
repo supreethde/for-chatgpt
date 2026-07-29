@@ -46,6 +46,14 @@ import {
 } from './services/personalizationService';
 import { ProductCard } from './features/products/ProductCard';
 import { ProductDetailPage } from './features/products/ProductDetailPage';
+import { CategoryPage } from './features/seo/CategoryPage';
+import { SeoHead } from './features/seo/SeoHead';
+import { createFaqSchema, FAQ_ITEMS } from './features/seo/faq';
+import {
+  CATEGORY_SEO_CONTENT,
+  createOrganizationSchemas,
+  DEFAULT_SOCIAL_IMAGE,
+} from './features/seo/seo';
 
 // Banner image imports
 import carrotsImg from './assets/images/1.webp';
@@ -136,39 +144,11 @@ const categoryCards = [
   { id: 'exotics', name: 'Exotics', image: '/exotics-1.webp', bgClass: 'circle-bg-6' },
 ];
 
-const faqData = [
-  {
-    q: "Who is The Soil Theory for?",
-    a: "We supply fruits and vegetables to fine-dine restaurants, hotels & resorts, cafes & bakeries, caterers & event organisers, retail shops, and cloud kitchens across Bengaluru and Karnataka."
-  },
-  {
-    q: "What produce formats do you offer?",
-    a: "Five formats to match different kitchen needs and budgets: certified organic, organically grown, pesticide-free/hydroponic, microgreens & specialty, and imported exotics — each with different pricing and certification levels."
-  },
-  {
-    q: "How do you guarantee produce is chemical- and pesticide-free?",
-    a: "We conduct pesticide-residue lab testing every week across organophosphates, carbamates, and pyrethroids. If a batch fails, it never ships. We share the residue test report with our partners, because trust should be visible, not just claimed."
-  },
-  {
-    q: "What time is produce delivered?",
-    a: "Standard kitchen delivery is before 6 AM daily, timed so your team can prep with fresh produce from the moment service starts. Orders placed by around midday are harvested, quality-checked, and delivered the same overnight cycle."
-  },
-  {
-    q: "How is pricing structured?",
-    a: "Pricing depends on the produce format and your volume — for example, certified organic runs roughly ₹60–70/kg, while pesticide-free ranges around ₹45–50/kg. Use our produce cost calculator on the homepage for an estimate, or request a sample invoice tailored to your actual menu."
-  },
-  {
-    q: "What if I'm not happy with a delivery?",
-    a: "Our QA policy is simple: if a vegetable disappoints you, we replace it — free, no forms required. Just let us know."
-  },
-  {
-    q: "Do you supply fruits and vegetables suppliers for restaurants outside Bengaluru?",
-    a: "Right now we focus on restaurants, hotels, and food businesses within Bengaluru and surrounding parts of Karnataka, where our farm network and delivery timelines are strongest."
-  },
-  {
-    q: "How do I get started?",
-    a: "Reach out via phone (+91 98805 85292), email (hello@soiltheory.in), or WhatsApp — tell us a bit about your kitchen and expected volumes, and we'll put together a sample invoice."
-  }
+const faqData = FAQ_ITEMS;
+
+const HOME_SCHEMAS = [
+  ...createOrganizationSchemas(),
+  createFaqSchema(),
 ];
 
 const getNormalizedPath = (): string => {
@@ -215,7 +195,9 @@ export default function App() {
   // Workspace Tabs State
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<string>('All Products');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('search') || ''
+  );
 
   // Handle header search typing with smooth scroll to catalogue
   const handleHeaderSearch = (val: string) => {
@@ -875,6 +857,46 @@ export default function App() {
     return <AdminDashboard user={user} authLoading={loading} onNavigate={navigateTo} />;
   }
 
+  const categoryPathMatch = normalizedPath.match(/^\/produce\/category\/([^/]+)$/);
+  if (categoryPathMatch) {
+    const category = CATEGORY_SEO_CONTENT[decodeURIComponent(categoryPathMatch[1])];
+    if (category) {
+      const categoryProducts = products.filter((product) => {
+        const activeState = product.isActive ?? (product as any).active ?? true;
+        return activeState !== false && product.category === category.name;
+      });
+
+      return (
+        <CategoryPage
+          category={category}
+          products={categoryProducts}
+          isLoading={productsLoading}
+          quantities={estimateQuantities}
+          getPriceRange={getProductPriceRange}
+          getFarmSource={getProductFarmSource}
+          getWeeklyStatus={getProductWeeklyTestStatus}
+          getDescription={getProductDescription}
+          onBack={() => {
+            navigateTo('/');
+            window.setTimeout(() => {
+              document.getElementById('catalog-workspace')?.scrollIntoView({ behavior: 'smooth' });
+            }, 0);
+          }}
+          onNavigate={(path) => {
+            navigateTo(path);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onAdd={(product) => {
+            setEstimateQuantities((current) => ({
+              ...current,
+              [product.id]: (current[product.id] || 0) + 10,
+            }));
+          }}
+        />
+      );
+    }
+  }
+
   const productPathMatch = normalizedPath.match(/^\/produce\/([^/]+)$/);
   if (productPathMatch) {
     const productSlug = decodeURIComponent(productPathMatch[1]);
@@ -908,6 +930,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4f0e7] text-[#183b2b] flex flex-col font-sans selection:bg-[#c9dc74] selection:text-[#183b2b]">
+      <SeoHead
+        title="Organic Produce Supply for Bengaluru Restaurants"
+        description="The Soil Theory supplies traceable organic and pesticide-free fruits, vegetables, leafy greens, mushrooms and specialty produce to Bengaluru professional kitchens."
+        canonicalPath="/"
+        image={DEFAULT_SOCIAL_IMAGE}
+        schemas={HOME_SCHEMAS}
+      />
       
       {/* 1. Announcement Bar */}
       <div className="announcement">
@@ -1509,10 +1538,11 @@ export default function App() {
             {/* Category Circles Row */}
             <div className="header-right-categories">
               {categoryCards.map((cat) => (
-                <button
+                <a
                   key={cat.id}
-                  type="button"
-                  onClick={() => {
+                  href={`/produce/category/${cat.id}`}
+                  onClick={(event) => {
+                    event.preventDefault();
                     setSelectedCategory(cat.name);
                     setActiveTab('catalog');
                     const el = document.getElementById('catalog-workspace');
@@ -1535,7 +1565,7 @@ export default function App() {
                   <span className={`circle-label ${selectedCategory === cat.name ? 'underline font-bold' : ''}`}>
                     {cat.name}
                   </span>
-                </button>
+                </a>
               ))}
             </div>
           </div>
@@ -1844,10 +1874,17 @@ export default function App() {
                 {/* Filter Pills */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none w-full max-w-full min-w-0">
                   {['All Products', 'Vegetables', 'Fruits', 'Leafy Greens', 'Microgreens', 'Mushrooms', 'Exotics'].map((catName) => (
-                    <button
+                    <a
                       key={catName}
-                      type="button"
-                      onClick={() => setSelectedCategory(catName)}
+                      href={
+                        catName === 'All Products'
+                          ? '#catalog-workspace'
+                          : `/produce/category/${catName.toLowerCase().replace(/\s+/g, '-')}`
+                      }
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setSelectedCategory(catName);
+                      }}
                       className={`px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                         selectedCategory === catName
                           ? 'bg-[#183b2b] text-[#c9dc74]'
@@ -1855,7 +1892,7 @@ export default function App() {
                       }`}
                     >
                       {catName}
-                    </button>
+                    </a>
                   ))}
                   {selectedCategory !== 'All Products' && (
                     <button
@@ -1975,6 +2012,7 @@ export default function App() {
                           <ProductCard
                             key={prod.id}
                             product={prod}
+                            productHref={`/produce/${encodeURIComponent(prod.slug)}`}
                             priceRange={priceRange}
                             farmSource={farmSource}
                             weeklyStatus={weeklyStatus}
