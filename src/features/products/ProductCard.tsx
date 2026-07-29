@@ -11,6 +11,7 @@ interface ProductCardProps {
   weeklyStatus: string;
   description: string;
   currentQuantity: number;
+  productHref: string;
   onOpen: () => void;
   onAdd: () => void;
 }
@@ -22,6 +23,7 @@ export function ProductCard({
   weeklyStatus,
   description,
   currentQuantity,
+  productHref,
   onOpen,
   onAdd,
 }: ProductCardProps) {
@@ -82,6 +84,7 @@ export function ProductCard({
               title={`Botanical illustration of ${product.name}`}
               width={800}
               height={600}
+              sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1279px) 50vw, 25vw"
               loading="lazy"
               decoding="async"
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[400ms] ease-out md:group-hover:opacity-0 ${
@@ -96,6 +99,7 @@ export function ProductCard({
                 title={`Fresh ${product.name}`}
                 width={800}
                 height={600}
+                sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1279px) 50vw, 25vw"
                 loading="lazy"
                 decoding="async"
                 className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[400ms] ease-out md:opacity-0 md:group-hover:opacity-100 ${
@@ -113,8 +117,18 @@ export function ProductCard({
           <span className="text-xs font-mono font-bold text-[#183b2b]">{priceRange}</span>
         </div>
 
-        <h3 className="mb-1 font-serif text-xl font-bold text-[#183b2b] transition-colors group-hover:text-[#79966e]">
-          {product.name}
+        <h3 className="mb-1 font-serif text-xl font-bold">
+          <a
+            href={productHref}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpen();
+            }}
+            className="text-[#183b2b] transition-colors group-hover:text-[#79966e]"
+          >
+            {product.name}
+          </a>
         </h3>
         <p className="mb-4 line-clamp-2 text-xs leading-relaxed text-[#55705c]">{description}</p>
       </div>

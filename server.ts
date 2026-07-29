@@ -243,9 +243,47 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    app.get("/products/:slug", (req, res) => {
+      res.redirect(301, `/produce/${encodeURIComponent(req.params.slug)}`);
+    });
+
+    app.get("/gone/:slug", (req, res) => {
+      res
+        .status(410)
+        .set("X-Robots-Tag", "noindex, nofollow")
+        .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex, nofollow"><title>Produce No Longer Available | The Soil Theory</title></head><body><main><h1>This produce page is no longer available.</h1><p>The requested resource has been permanently removed.</p><a href="/">Return to the produce catalogue</a></main></body></html>`);
+    });
+
+    app.get("/produce/category/:slug", (req, res) => {
+      const filePath = path.join(
+        distPath,
+        "produce",
+        "category",
+        req.params.slug,
+        "index.html"
+      );
+      if (fs.existsSync(filePath)) {
+        return res.sendFile(filePath);
+      }
+      return res.status(404).sendFile(path.join(distPath, "404.html"));
+    });
+
+    app.get("/produce/:slug", (req, res) => {
+      const filePath = path.join(distPath, "produce", req.params.slug, "index.html");
+      if (fs.existsSync(filePath)) {
+        return res.sendFile(filePath);
+      }
+      return res.status(404).sendFile(path.join(distPath, "404.html"));
+    });
+
     app.use(express.static(distPath));
+
+    app.get(["/admin", "/admin/login"], (req, res) => {
+      res.sendFile(path.join(distPath, "admin.html"));
+    });
+
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.status(404).sendFile(path.join(distPath, "404.html"));
     });
   }
 

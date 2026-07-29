@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /api
 
 Sitemap: https://www.thesoiltheory.in/sitemap.xml
+Sitemap: https://www.thesoiltheory.in/image-sitemap.xml

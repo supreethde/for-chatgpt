@@ -1,8 +1,42 @@
 {
+  "redirects": [
+    {
+      "source": "/products/:slug",
+      "destination": "/produce/:slug",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/admin/login",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/gone/:slug",
+      "destination": "/api/gone?slug=:slug"
+    },
+    {
+      "source": "/produce/category/:slug",
+      "destination": "/produce/category/:slug/index.html"
+    },
+    {
       "source": "/produce/:slug",
-      "destination": "/index.html"
+      "destination": "/produce/:slug/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }
