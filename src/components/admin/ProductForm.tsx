@@ -3,6 +3,7 @@ import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_
 import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { uploadProductImage, validateImageFile } from '../../lib/storage-utils';
+import { PRODUCT_IMAGE_ROLES } from '../../features/products/productImages';
 
 interface ProductFormProps {
   product?: CatalogProduct | null; // null if adding new product
@@ -50,7 +51,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   const [regionalNameKannada, setRegionalNameKannada] = useState(product?.regionalNameKannada || '');
   const [regionalNameHindi, setRegionalNameHindi] = useState(product?.regionalNameHindi || '');
   
-  // Up to 5 image URLs from Firebase Storage
+  // Four role-based image URLs from Firebase Storage
   const [images, setImages] = useState<string[]>(
     product?.images && product.images.length > 0 ? [...product.images] : []
   );
@@ -149,12 +150,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       return;
     }
 
-    const maxAllowed = 5;
+    const maxAllowed = 4;
     const currentCount = images.length;
     const availableSlots = maxAllowed - currentCount;
 
     if (availableSlots <= 0) {
-      setUploadError('Maximum limit of 5 images per product reached.');
+      setUploadError('All 4 product image slots are already filled.');
       if (e.target) e.target.value = '';
       return;
     }
@@ -287,8 +288,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       newErrors.description = 'Product description is required';
     }
 
-    if (images.length === 0) {
-      newErrors.images = 'At least 1 product image is required. Please upload an image.';
+    if (images.length !== 4) {
+      newErrors.images =
+        'Exactly 4 product images are required in this order: botanical, real product, benefits, and why organic.';
     }
     if (uploading) {
       newErrors.images = 'Please wait for image upload to complete.';
@@ -729,10 +731,10 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
           <div className="flex justify-between items-center pb-2 border-b border-stone-100">
             <div>
               <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
-                5. Product Images (Up to 5)
+                5. Product Images (Exactly 4)
               </h3>
               <p className="text-[11px] text-stone-500">
-                Upload images from your computer directly to Firebase Storage ({images.length}/5 uploaded)
+                Upload in the required order shown below ({images.length}/4 uploaded)
               </p>
             </div>
 
@@ -749,7 +751,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={images.length >= 5 || uploading}
+              disabled={images.length >= 4 || uploading}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               {uploading ? (
@@ -799,7 +801,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
 
           {/* Uploaded Image Thumbnails Grid */}
           {images.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {images.map((imgUrl, idx) => (
                 <div
                   key={idx}
@@ -807,13 +809,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
                 >
                   <img
                     src={imgUrl}
-                    alt={`Product Image ${idx + 1}`}
+                    alt={PRODUCT_IMAGE_ROLES[idx]?.label || `Product Image ${idx + 1}`}
+                    title={PRODUCT_IMAGE_ROLES[idx]?.label}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                   />
 
                   {/* Badge */}
                   <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-stone-900/80 text-white text-[10px] font-mono rounded backdrop-blur-xs">
-                    {idx === 0 ? 'Main' : `#${idx + 1}`}
+                    Image {idx + 1}
                   </span>
 
                   {/* Delete Button */}
@@ -825,6 +828,11 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  <div className="absolute inset-x-0 bottom-0 bg-stone-950/80 px-2 py-1.5 text-white">
+                    <p className="truncate text-[9px] font-bold">
+                      {PRODUCT_IMAGE_ROLES[idx]?.shortLabel || `Image ${idx + 1}`}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -842,12 +850,25 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
                     Click to upload product images
                   </p>
                   <p className="text-[11px] text-stone-500 mt-0.5">
-                    PNG, JPG, WebP, or GIF up to 5MB (Max 5 images per product)
+                    PNG, JPG, WebP, or GIF up to 5MB (4 images per product)
                   </p>
                 </div>
               </div>
             )
           )}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {PRODUCT_IMAGE_ROLES.map((role) => (
+              <div key={role.slot} className="rounded-lg border border-stone-200 bg-stone-50 p-2.5">
+                <p className="text-[10px] font-mono font-bold uppercase text-stone-800">
+                  Image {role.slot + 1} · {role.label}
+                </p>
+                <p className="mt-0.5 text-[10px] leading-relaxed text-stone-500">
+                  {role.description}
+                </p>
+              </div>
+            ))}
+          </div>
 
           {errors.images && <p className="text-[11px] text-red-600 font-medium">{errors.images}</p>}
         </div>

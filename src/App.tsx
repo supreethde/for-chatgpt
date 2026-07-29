@@ -44,6 +44,8 @@ import {
   fetchCataloguePreferences,
   saveCataloguePreferences,
 } from './services/personalizationService';
+import { ProductCard } from './features/products/ProductCard';
+import { ProductDetailPage } from './features/products/ProductDetailPage';
 
 // Banner image imports
 import carrotsImg from './assets/images/1.webp';
@@ -214,7 +216,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<string>('All Products');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
 
   // Handle header search typing with smooth scroll to catalogue
   const handleHeaderSearch = (val: string) => {
@@ -872,6 +873,37 @@ export default function App() {
 
   if (normalizedPath === '/admin') {
     return <AdminDashboard user={user} authLoading={loading} onNavigate={navigateTo} />;
+  }
+
+  const productPathMatch = normalizedPath.match(/^\/produce\/([^/]+)$/);
+  if (productPathMatch) {
+    const productSlug = decodeURIComponent(productPathMatch[1]);
+    const product = products.find((item) => item.slug.toLowerCase() === productSlug) || null;
+    const productQuantity = product ? estimateQuantities[product.id] || 0 : 0;
+
+    return (
+      <ProductDetailPage
+        product={product}
+        isLoading={productsLoading}
+        priceRange={product ? getProductPriceRange(product) : ''}
+        farmSource={product ? getProductFarmSource(product) : ''}
+        weeklyStatus={product ? getProductWeeklyTestStatus(product) : ''}
+        currentQuantity={productQuantity}
+        onBack={() => {
+          navigateTo('/');
+          window.setTimeout(() => {
+            document.getElementById('catalog-workspace')?.scrollIntoView({ behavior: 'smooth' });
+          }, 0);
+        }}
+        onAdd={() => {
+          if (!product) return;
+          setEstimateQuantities((current) => ({
+            ...current,
+            [product.id]: (current[product.id] || 0) + 10,
+          }));
+        }}
+      />
+    );
   }
 
   return (
@@ -1938,71 +1970,28 @@ export default function App() {
                         const weeklyStatus = getProductWeeklyTestStatus(prod);
                         const description = getProductDescription(prod);
                         const currentQty = estimateQuantities[prod.id] || 0;
-                        const primaryImage = prod.images?.[0];
 
                         return (
-                          <div 
-                            key={prod.id} 
-                            className="bg-white border border-[#e9e3d5] p-5 flex flex-col justify-between hover:shadow-lg transition-all group cursor-pointer"
-                            onClick={() => setSelectedProduct(prod)}
-                          >
-                            <div>
-                              {primaryImage && (
-                                <div className="aspect-[4/3] w-full overflow-hidden rounded-t-xl bg-[#f4f0e7] mb-4">
-                                  <img
-                                    src={primaryImage}
-                                    alt={prod.name}
-                                    width={800}
-                                    height={600}
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              )}
-
-                              <div className="flex justify-between items-start gap-4 mb-2">
-                                <span className="text-[10px] font-mono tracking-wider uppercase text-[#f48b4d] bg-[#f48b4d]/10 px-2 py-0.5 font-bold">
-                                  {prod.category}
-                                </span>
-                                <span className="text-xs font-mono font-bold text-[#183b2b]">{priceRange}</span>
-                              </div>
-                              
-                              <h3 className="font-serif text-xl font-bold text-[#183b2b] group-hover:text-[#79966e] transition-colors mb-1">
-                                {prod.name}
-                              </h3>
-                              <p className="text-xs text-[#55705c] leading-relaxed mb-4 line-clamp-2">{description}</p>
-                            </div>
-
-                            <div className="border-t border-[#e9e3d5] pt-4 mt-2" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-2 text-xs text-[#55705c] mb-2">
-                                <MapPin className="w-3.5 h-3.5 text-[#f48b4d] shrink-0" />
-                                <span className="truncate">Source: <strong>{farmSource}</strong></span>
-                              </div>
-                              
-                              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#e9e3d5]/50">
-                                <span className="text-[11px] text-[#3e6927] font-semibold flex items-center gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  {weeklyStatus}
-                                </span>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEstimateQuantities(prev => ({
-                                      ...prev,
-                                      [prod.id]: (prev[prod.id] || 0) + 10
-                                    }));
-                                    setIsCartOpen(true);
-                                  }}
-                                  className="text-xs font-bold bg-[#183b2b] text-[#c9dc74] px-3 py-1.5 hover:bg-[#79966e] transition-all cursor-pointer shrink-0"
-                                >
-                                  + Add 10kg {currentQty > 0 ? `(${currentQty}kg)` : ''}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                          <ProductCard
+                            key={prod.id}
+                            product={prod}
+                            priceRange={priceRange}
+                            farmSource={farmSource}
+                            weeklyStatus={weeklyStatus}
+                            description={description}
+                            currentQuantity={currentQty}
+                            onOpen={() => {
+                              navigateTo(`/produce/${encodeURIComponent(prod.slug)}`);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            onAdd={() => {
+                              setEstimateQuantities((current) => ({
+                                ...current,
+                                [prod.id]: (current[prod.id] || 0) + 10,
+                              }));
+                              setIsCartOpen(true);
+                            }}
+                          />
                         );
                       })}
                     </div>
@@ -2272,59 +2261,6 @@ export default function App() {
 
           </AnimatePresence>
         </section>
-
-        {/* Product Detail Modal */}
-        {selectedProduct && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-            <div className="bg-[#f4f0e7] border border-[#183b2b] max-w-lg w-full p-6 space-y-4 shadow-2xl relative">
-              <button 
-                type="button" 
-                onClick={() => setSelectedProduct(null)} 
-                className="absolute top-4 right-4 text-[#183b2b] hover:text-[#f48b4d] font-bold text-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <span className="text-[10px] font-mono text-[#f48b4d] font-bold uppercase bg-[#f48b4d]/10 px-2 py-0.5">
-                {selectedProduct.category}
-              </span>
-              <h3 className="font-serif text-2xl font-bold text-[#183b2b]">{selectedProduct.name}</h3>
-              <p className="text-xs text-[#55705c] leading-relaxed">{getProductDescription(selectedProduct)}</p>
-
-              <div className="bg-white p-3 border border-[#e9e3d5] space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-[#55705c]">Price Range:</span>
-                  <strong className="text-[#183b2b] font-mono">{getProductPriceRange(selectedProduct)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#55705c]">Farm Source:</span>
-                  <strong className="text-[#183b2b]">{getProductFarmSource(selectedProduct)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#55705c]">Weekly Test Status:</span>
-                  <strong className="text-[#3e6927]">{getProductWeeklyTestStatus(selectedProduct)}</strong>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEstimateQuantities(prev => ({
-                      ...prev,
-                      [selectedProduct.id]: (prev[selectedProduct.id] || 0) + 10
-                    }));
-                    setSelectedProduct(null);
-                    setIsCartOpen(true);
-                  }}
-                  className="button button-dark text-xs px-4 py-2 font-bold"
-                >
-                  + Add 10kg to Inquiry Cart
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* 9. Report / Lab Testing Section */}
         <section className="report-section">
