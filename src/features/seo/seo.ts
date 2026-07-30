@@ -1,4 +1,9 @@
 import { CatalogProduct, ProductCategory } from '../../types';
+import {
+  getActiveQualityRanges,
+  getActiveVariants,
+  getQualityRangeDisplayLabel,
+} from '../products/productModel';
 
 export const SITE_URL = 'https://www.thesoiltheory.in';
 export const SITE_NAME = 'The Soil Theory';
@@ -159,22 +164,28 @@ export function createOrganizationSchemas() {
 export function createProductSchemas(product: CatalogProduct) {
   const canonicalUrl = `${SITE_URL}/produce/${encodeURIComponent(product.slug)}`;
   const images = (product.images || []).filter(Boolean);
-  const offers = (product.variants || [])
-    .filter((variant) => Number.isFinite(variant.sellingPrice ?? variant.price))
-    .map((variant) => ({
-      '@type': 'Offer',
-      priceCurrency: 'INR',
-      price: variant.sellingPrice ?? variant.price,
-      availability:
-        variant.stockStatus === 'out_of_stock'
-          ? 'https://schema.org/OutOfStock'
-          : variant.stockStatus === 'low_stock'
-            ? 'https://schema.org/LimitedAvailability'
-            : 'https://schema.org/InStock',
-      url: canonicalUrl,
-      itemCondition: 'https://schema.org/NewCondition',
-      seller: { '@id': `${SITE_URL}/#organization` },
-    }));
+  const offers = getActiveQualityRanges(product).flatMap((range) =>
+    getActiveVariants(range)
+      .filter((variant) => Number.isFinite(variant.sellingPrice ?? variant.price))
+      .map((variant) => ({
+        '@type': 'Offer',
+        name: `${getQualityRangeDisplayLabel(range)} · ${variant.label}`,
+        sku: variant.sku || `${product.slug}-${range.id}-${variant.id}`,
+        priceCurrency: 'INR',
+        price: variant.sellingPrice ?? variant.price,
+        availability:
+          range.stockStatus === 'out_of_stock' ||
+          variant.stockStatus === 'out_of_stock'
+            ? 'https://schema.org/OutOfStock'
+            : range.stockStatus === 'low_stock' ||
+                variant.stockStatus === 'low_stock'
+              ? 'https://schema.org/LimitedAvailability'
+              : 'https://schema.org/InStock',
+        url: canonicalUrl,
+        itemCondition: 'https://schema.org/NewCondition',
+        seller: { '@id': `${SITE_URL}/#organization` },
+      }))
+  );
 
   return [
     {

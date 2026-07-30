@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { CatalogProduct, ProductCategory, SourcingTier } from '../../types';
 import { Plus, Edit2, Trash2, Search, Filter, Image as ImageIcon, CheckCircle, XCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import {
+  getActiveQualityRanges,
+  getActiveVariants,
+  getLowestAvailablePrice,
+} from '../../features/products/productModel';
 
 interface ProductListProps {
   products: CatalogProduct[];
@@ -53,22 +58,22 @@ export const ProductList: React.FC<ProductListProps> = ({
 
   // Calculate lowest price for a product across all variants
   const getLowestPrice = (product: CatalogProduct): number => {
-    if (!product.variants || product.variants.length === 0) return 0;
-    return Math.min(...product.variants.map((v) => v.sellingPrice ?? v.price ?? 0));
+    return getLowestAvailablePrice(product) ?? 0;
   };
 
   // Extract distinct sourcing tiers for a product
   const getDistinctSourcingTiers = (product: CatalogProduct): SourcingTier[] => {
-    if (!product.variants) return [];
-    const tiers = product.variants
-      .map((v) => v.sourcingTier)
+    const tiers = getActiveQualityRanges(product)
+      .map((range) => range.assuranceTier)
       .filter((t): t is SourcingTier => Boolean(t));
     return Array.from(new Set(tiers));
   };
 
   // Check overall stock status
   const getStockBadge = (product: CatalogProduct) => {
-    if (!product.variants || product.variants.length === 0) {
+    const ranges = getActiveQualityRanges(product);
+    const variants = ranges.flatMap(getActiveVariants);
+    if (variants.length === 0) {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
           No Variants
@@ -76,8 +81,16 @@ export const ProductList: React.FC<ProductListProps> = ({
       );
     }
 
-    const hasInStock = product.variants.some((v) => v.stockStatus === 'in_stock');
-    const hasLowStock = product.variants.some((v) => v.stockStatus === 'low_stock');
+    const hasInStock = ranges.some(
+      (range) =>
+        range.stockStatus === 'in_stock' &&
+        getActiveVariants(range).some((variant) => variant.stockStatus === 'in_stock')
+    );
+    const hasLowStock = ranges.some(
+      (range) =>
+        range.stockStatus !== 'out_of_stock' &&
+        getActiveVariants(range).some((variant) => variant.stockStatus !== 'out_of_stock')
+    );
 
     if (hasInStock) {
       return (
@@ -193,6 +206,11 @@ export const ProductList: React.FC<ProductListProps> = ({
                 {filteredProducts.map((product) => {
                   const lowestPrice = getLowestPrice(product);
                   const primaryImg = product.images?.[0];
+                  const activeRanges = getActiveQualityRanges(product);
+                  const packCount = activeRanges.reduce(
+                    (count, range) => count + getActiveVariants(range).length,
+                    0
+                  );
 
                   return (
                     <tr
@@ -275,9 +293,9 @@ export const ProductList: React.FC<ProductListProps> = ({
                       {/* Price */}
                       <td className="py-3 px-4 font-mono font-semibold text-stone-900">
                         ₹{lowestPrice}
-                        {product.variants.length > 1 && (
+                        {packCount > 1 && (
                           <span className="text-[10px] text-stone-400 font-normal ml-1">
-                            ({product.variants.length} packs)
+                            ({packCount} packs across {activeRanges.length} ranges)
                           </span>
                         )}
                       </td>

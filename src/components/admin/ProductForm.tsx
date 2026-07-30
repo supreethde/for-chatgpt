@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CatalogProduct, ProductCategory, ProductVariant, StockStatus, SOURCING_TIERS, SourcingTier } from '../../types';
-import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2 } from 'lucide-react';
+import {
+  AssuranceTier,
+  CatalogProduct,
+  CultivationMethod,
+  CULTIVATION_METHODS,
+  ProductCategory,
+  ProductQualityRange,
+  ProductVariant,
+  StockStatus,
+  SOURCING_TIERS,
+} from '../../types';
+import { Plus, Trash2, X, Image as ImageIcon, AlertCircle, Check, ArrowLeft, Upload, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { auth } from '../../lib/firebase-auth';
 import { uploadProductImage, validateImageFile } from '../../lib/storage-utils';
 import { PRODUCT_IMAGE_ROLES } from '../../features/products/productImages';
+import {
+  createEmptyPackVariant,
+  createEmptyQualityRange,
+  normalizeProductQualityRanges,
+  validateQualityRanges,
+} from '../../features/products/productModel';
 
 interface ProductFormProps {
   product?: CatalogProduct | null; // null if adding new product
@@ -63,34 +79,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Pack-size variants
-  const [variants, setVariants] = useState<ProductVariant[]>(
-    product?.variants && product.variants.length > 0
-      ? product.variants.map((v, i) => ({
-          id: v.id || 'var-' + Date.now() + '-' + (i + 1),
-          sourcingTier: v.sourcingTier,
-          label: v.label || '',
-          sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 99),
-          previousPrice: typeof v.previousPrice === 'number' ? v.previousPrice : (typeof v.mrp === 'number' ? v.mrp : undefined),
-          stockStatus: v.stockStatus || 'in_stock',
-          note: v.note || '',
-          price: typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 99),
-          mrp: typeof v.previousPrice === 'number' ? v.previousPrice : (typeof v.mrp === 'number' ? v.mrp : undefined),
-        }))
-      : [
-          {
-            id: 'var-' + Date.now() + '-1',
-            sourcingTier: 'Certified Organic',
-            label: '250 g',
-            sellingPrice: 99,
-            previousPrice: 120,
-            stockStatus: 'in_stock',
-            note: '',
-            price: 99,
-            mrp: 120,
-          },
-        ]
-  );
+  const [qualityRanges, setQualityRanges] = useState<ProductQualityRange[]>(() => {
+    if (!product) return [createEmptyQualityRange()];
+    const normalized = normalizeProductQualityRanges(
+      product as CatalogProduct & Record<string, unknown>
+    );
+    return normalized.length > 0 ? normalized : [createEmptyQualityRange()];
+  });
 
   const [isActive, setIsActive] = useState<boolean>(product?.isActive ?? true);
   const [featuredProduct, setFeaturedProduct] = useState<boolean>(
@@ -216,52 +211,108 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
     setImages(images.filter((_, i) => i !== index));
   };
 
-  // Variant handlers
-  const handleAddVariant = () => {
-    setVariants([
-      ...variants,
-      {
-        id: 'var-' + Date.now() + '-' + (variants.length + 1),
-        sourcingTier: variants[variants.length - 1]?.sourcingTier || 'Certified Organic',
-        label: '500 g',
-        sellingPrice: 150,
-        previousPrice: 180,
-        stockStatus: 'in_stock',
-        note: '',
-        price: 150,
-        mrp: 180,
-      },
-    ]);
+  const handleAddQualityRange = () => {
+    if (qualityRanges.length >= 3) return;
+    setQualityRanges((current) => [...current, createEmptyQualityRange()]);
+  };
+
+  const handleRemoveQualityRange = (rangeIndex: number) => {
+    if (qualityRanges.length <= 1) return;
+    setQualityRanges((current) =>
+      current.filter((_, index) => index !== rangeIndex)
+    );
+  };
+
+  const handleMoveQualityRange = (rangeIndex: number, direction: -1 | 1) => {
+    const targetIndex = rangeIndex + direction;
+    if (targetIndex < 0 || targetIndex >= qualityRanges.length) return;
+    setQualityRanges((current) => {
+      const updated = [...current];
+      [updated[rangeIndex], updated[targetIndex]] = [
+        updated[targetIndex],
+        updated[rangeIndex],
+      ];
+      return updated;
+    });
+  };
+
+  const handleUpdateQualityRange = (
+    rangeIndex: number,
+    field: keyof ProductQualityRange,
+    value: unknown
+  ) => {
+    setQualityRanges((current) =>
+      current.map((range, index) => {
+        if (index !== rangeIndex) return range;
+        if (field === 'minimumOrderQuantity') {
+          return {
+            ...range,
+            minimumOrderQuantity:
+              value === '' ? undefined : Math.max(1, Number(value)),
+          };
+        }
+        return { ...range, [field]: value };
+      })
+    );
+  };
+
+  const handleAddVariant = (rangeIndex: number) => {
+    setQualityRanges((current) =>
+      current.map((range, index) =>
+        index === rangeIndex
+          ? { ...range, variants: [...range.variants, createEmptyPackVariant()] }
+          : range
+      )
+    );
   };
 
   const handleUpdateVariant = (
-    index: number,
+    rangeIndex: number,
+    variantIndex: number,
     field: keyof ProductVariant | 'price' | 'mrp',
-    value: any
+    value: unknown
   ) => {
-    const updated = [...variants];
-    const target = { ...updated[index] };
+    setQualityRanges((current) =>
+      current.map((range, currentRangeIndex) => {
+        if (currentRangeIndex !== rangeIndex) return range;
+        const variants = range.variants.map((variant, currentVariantIndex) => {
+          if (currentVariantIndex !== variantIndex) return variant;
+          const updated = { ...variant };
 
-    if (field === 'sellingPrice' || field === 'price') {
-      const num = value === '' ? ('' as any) : Number(value);
-      target.sellingPrice = num;
-      target.price = num;
-    } else if (field === 'previousPrice' || field === 'mrp') {
-      const num = value === '' ? undefined : Number(value);
-      target.previousPrice = num;
-      target.mrp = num;
-    } else {
-      (target as any)[field] = value;
-    }
+          if (field === 'sellingPrice' || field === 'price') {
+            const price = value === '' ? ('' as unknown as number) : Number(value);
+            updated.sellingPrice = price;
+            updated.price = price;
+          } else if (field === 'previousPrice' || field === 'mrp') {
+            const previousPrice = value === '' ? undefined : Number(value);
+            updated.previousPrice = previousPrice;
+            updated.mrp = previousPrice;
+          } else if (field === 'quantity') {
+            updated.quantity = value === '' ? undefined : Number(value);
+          } else {
+            Object.assign(updated, { [field]: value });
+          }
 
-    updated[index] = target;
-    setVariants(updated);
+          return updated;
+        });
+        return { ...range, variants };
+      })
+    );
   };
 
-  const handleRemoveVariant = (index: number) => {
-    if (variants.length > 1) {
-      setVariants(variants.filter((_, i) => i !== index));
-    }
+  const handleRemoveVariant = (rangeIndex: number, variantIndex: number) => {
+    setQualityRanges((current) =>
+      current.map((range, index) =>
+        index === rangeIndex && range.variants.length > 1
+          ? {
+              ...range,
+              variants: range.variants.filter(
+                (_, currentVariantIndex) => currentVariantIndex !== variantIndex
+              ),
+            }
+          : range
+      )
+    );
   };
 
   // Validation
@@ -300,41 +351,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       newErrors.images = 'Please wait for image upload to complete.';
     }
 
-    if (variants.length === 0) {
-      newErrors.variants = 'At least 1 pack-size variant is required';
-    } else {
-      const comboSet = new Set<string>();
-
-      variants.forEach((v, idx) => {
-        if (!v.sourcingTier) {
-          newErrors[`variant_tier_${idx}`] = 'Please select a Sourcing Tier';
-        }
-        if (!v.label || !v.label.trim()) {
-          newErrors[`variant_label_${idx}`] = 'Pack size is required';
-        }
-
-        const currentPrice = v.sellingPrice ?? v.price;
-        if (
-          currentPrice === undefined ||
-          currentPrice === null ||
-          currentPrice === ('' as any) ||
-          isNaN(Number(currentPrice)) ||
-          Number(currentPrice) <= 0
-        ) {
-          newErrors[`variant_price_${idx}`] = 'Valid selling price required';
-        }
-
-        // Check duplicate (Sourcing Tier + Pack Size) combination
-        if (v.sourcingTier && v.label && v.label.trim()) {
-          const comboKey = `${v.sourcingTier.trim().toLowerCase()}:::${v.label.trim().toLowerCase()}`;
-          if (comboSet.has(comboKey)) {
-            newErrors[`variant_duplicate_${idx}`] = `Duplicate option: "${v.sourcingTier}" with "${v.label.trim()}". Each variant option must be unique.`;
-            newErrors.variants = 'Duplicate variants found. Please ensure each Sourcing Tier + Pack Size combination is unique.';
-          } else {
-            comboSet.add(comboKey);
-          }
-        }
+    const rangeValidation = validateQualityRanges(qualityRanges);
+    if (!rangeValidation.valid) {
+      rangeValidation.errors.forEach((message, index) => {
+        newErrors[`qualityRange_${index}`] = message;
       });
+      newErrors.qualityRanges =
+        'Review the quality ranges and pack-size variants below.';
     }
 
     setErrors(newErrors);
@@ -347,24 +370,43 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
 
     const cleanedImages = images.filter((img) => img.trim().length > 0);
 
-    const formattedVariants: ProductVariant[] = variants.map((v) => {
-      const sellPrice = Number(v.sellingPrice ?? v.price ?? 0);
-      const prevPrice = v.previousPrice !== undefined && v.previousPrice !== null && v.previousPrice !== ('' as any)
-        ? Number(v.previousPrice)
-        : (v.mrp !== undefined && v.mrp !== null && v.mrp !== ('' as any) ? Number(v.mrp) : undefined);
-
-      return {
-        id: v.id || 'var-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-        sourcingTier: v.sourcingTier!,
-        label: v.label.trim(),
-        sellingPrice: sellPrice,
-        ...(prevPrice !== undefined && !isNaN(prevPrice) ? { previousPrice: prevPrice } : {}),
-        stockStatus: v.stockStatus || 'in_stock',
-        ...(v.note && v.note.trim() ? { note: v.note.trim() } : {}),
-        price: sellPrice,
-        ...(prevPrice !== undefined && !isNaN(prevPrice) ? { mrp: prevPrice } : {}),
-      };
-    });
+    const formattedQualityRanges: ProductQualityRange[] = qualityRanges.map((range) => ({
+      ...range,
+      assuranceTier: range.assuranceTier as AssuranceTier,
+      cultivationMethod: range.cultivationMethod as CultivationMethod,
+      sourceFarm: range.sourceFarm?.trim() || undefined,
+      certificationDetails: range.certificationDetails?.trim() || undefined,
+      certificationDocumentUrl: range.certificationDocumentUrl?.trim() || undefined,
+      labReportUrl: range.labReportUrl?.trim() || undefined,
+      internalNotes: range.internalNotes?.trim() || undefined,
+      variants: range.variants.map((variant) => {
+        const sellingPrice = Number(variant.sellingPrice ?? variant.price ?? 0);
+        const previousPrice =
+          variant.previousPrice !== undefined && variant.previousPrice !== null
+            ? Number(variant.previousPrice)
+            : variant.mrp !== undefined && variant.mrp !== null
+              ? Number(variant.mrp)
+              : undefined;
+        return {
+          id: variant.id,
+          label: variant.label.trim(),
+          quantity: Number(variant.quantity),
+          unit: variant.unit?.trim(),
+          sellingPrice,
+          ...(previousPrice !== undefined && Number.isFinite(previousPrice)
+            ? { previousPrice }
+            : {}),
+          active: variant.active !== false,
+          stockStatus: variant.stockStatus,
+          ...(variant.sku?.trim() ? { sku: variant.sku.trim() } : {}),
+          price: sellingPrice,
+          ...(previousPrice !== undefined && Number.isFinite(previousPrice)
+            ? { mrp: previousPrice }
+            : {}),
+        };
+      }),
+      requiresManualReview: false,
+    }));
 
     const savedProduct: CatalogProduct = {
       id: product?.id || 'prod-' + Date.now(),
@@ -379,7 +421,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
       regionalNameKannada: regionalNameKannada.trim() || undefined,
       regionalNameHindi: regionalNameHindi.trim() || undefined,
       images: cleanedImages,
-      variants: formattedVariants,
+      qualityRanges: formattedQualityRanges,
       isActive,
       featuredProduct,
       promotionalPriority,
@@ -877,168 +919,424 @@ export const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onCan
           {errors.images && <p className="text-[11px] text-red-600 font-medium">{errors.images}</p>}
         </div>
 
-        {/* Pack-size Variants */}
+        {/* Quality Ranges and Pack-size Variants */}
         <div className="space-y-4">
-          <div className="flex justify-between items-center pb-2 border-b border-stone-100">
+          <div className="flex items-start justify-between gap-4 border-b border-stone-100 pb-2">
             <div>
               <h3 className="text-sm font-mono font-bold text-stone-900 uppercase tracking-wider">
-                6. Pack-size Variants
+                6. Quality Ranges &amp; Pack Sizes
               </h3>
-              <p className="text-[11px] text-stone-500 mt-0.5">
-                Each variant represents one complete purchasable product option (Sourcing Tier + Pack Size).
+              <p className="mt-0.5 text-[11px] text-stone-500">
+                Add only the quality ranges this product actually has. Maximum three ranges.
               </p>
             </div>
             <button
               type="button"
-              onClick={handleAddVariant}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer shrink-0"
+              onClick={handleAddQualityRange}
+              disabled={qualityRanges.length >= 3}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Variant
+              <Plus className="h-3.5 w-3.5" /> Add Quality Range
             </button>
           </div>
 
-          <div className="space-y-3">
-            {variants.map((v, idx) => (
-              <div
-                key={v.id || idx}
-                className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-3 relative group"
+          <div className="space-y-4">
+            {qualityRanges.map((range, rangeIndex) => (
+              <section
+                key={range.id}
+                className="space-y-4 rounded-xl border border-stone-200 bg-stone-50 p-4"
+                aria-labelledby={`quality-range-${range.id}`}
               >
-                {/* Variant Item Header */}
-                <div className="flex justify-between items-center border-b border-stone-200/70 pb-2">
-                  <span className="text-xs font-mono font-bold text-stone-700 uppercase">
-                    Variant #{idx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveVariant(idx)}
-                    disabled={variants.length === 1}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-stone-400 hover:text-red-600 disabled:opacity-30 transition-colors cursor-pointer"
-                    title="Remove variant"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Remove
-                  </button>
-                </div>
-
-                {/* Primary Fields Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-start">
-                  {/* 1. Sourcing Tier */}
-                  <div className="lg:col-span-2">
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Sourcing Tier <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={v.sourcingTier || ''}
-                      onChange={(e) => handleUpdateVariant(idx, 'sourcingTier', e.target.value)}
-                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
-                        errors[`variant_tier_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
-                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-medium text-stone-800`}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/70 pb-3">
+                  <div className="flex items-center gap-2">
+                    <h4
+                      id={`quality-range-${range.id}`}
+                      className="text-xs font-mono font-bold uppercase text-stone-700"
                     >
-                      <option value="" disabled>-- Select Sourcing Tier --</option>
-                      {SOURCING_TIERS.map((tier) => (
-                        <option key={tier} value={tier}>
-                          {tier}
-                        </option>
-                      ))}
-                    </select>
-                    {errors[`variant_tier_${idx}`] && (
-                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_tier_${idx}`]}</p>
+                      Quality Range #{rangeIndex + 1}
+                    </h4>
+                    {range.requiresManualReview && !range.assuranceTier && (
+                      <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                        Assurance review required
+                      </span>
                     )}
                   </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveQualityRange(rangeIndex, -1)}
+                      disabled={rangeIndex === 0}
+                      aria-label={`Move quality range ${rangeIndex + 1} up`}
+                      className="rounded p-1 text-stone-500 hover:bg-white disabled:opacity-25"
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveQualityRange(rangeIndex, 1)}
+                      disabled={rangeIndex === qualityRanges.length - 1}
+                      aria-label={`Move quality range ${rangeIndex + 1} down`}
+                      className="rounded p-1 text-stone-500 hover:bg-white disabled:opacity-25"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveQualityRange(rangeIndex)}
+                      disabled={qualityRanges.length === 1}
+                      className="ml-1 inline-flex items-center gap-1 text-xs font-medium text-stone-400 transition-colors hover:text-red-600 disabled:opacity-30"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Remove
+                    </button>
+                  </div>
+                </div>
 
-                  {/* 2. Pack Size */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Pack Size <span className="text-red-500">*</span>
-                    </label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Assurance Tier <span className="text-red-500">*</span>
+                    <select
+                      value={range.assuranceTier || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'assuranceTier',
+                          event.target.value as AssuranceTier
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    >
+                      <option value="" disabled>-- Select Assurance Tier --</option>
+                      {SOURCING_TIERS.map((tier) => (
+                        <option key={tier} value={tier}>{tier}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Cultivation Method <span className="text-red-500">*</span>
+                    <select
+                      value={range.cultivationMethod}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'cultivationMethod',
+                          event.target.value as CultivationMethod
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    >
+                      {CULTIVATION_METHODS.map((method) => (
+                        <option key={method} value={method}>{method}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Range Stock <span className="text-red-500">*</span>
+                    <select
+                      value={range.stockStatus}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'stockStatus',
+                          event.target.value as StockStatus
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    >
+                      {STOCK_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex min-h-10 items-center gap-2 self-end rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700">
+                    <input
+                      type="checkbox"
+                      checked={range.active !== false}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(rangeIndex, 'active', event.target.checked)
+                      }
+                      className="h-4 w-4 accent-emerald-800"
+                    />
+                    Active quality range
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Source Farm <span className="font-normal text-stone-400">(Optional)</span>
                     <input
                       type="text"
-                      value={v.label}
-                      onChange={(e) => handleUpdateVariant(idx, 'label', e.target.value)}
-                      placeholder="e.g. 250 g, 1 kg"
-                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
-                        errors[`variant_label_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
-                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600`}
+                      value={range.sourceFarm || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(rangeIndex, 'sourceFarm', event.target.value)
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
-                    {errors[`variant_label_${idx}`] && (
-                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_label_${idx}`]}</p>
-                    )}
-                  </div>
-
-                  {/* 3. Selling Price */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Selling Price (₹) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={v.sellingPrice ?? v.price ?? ''}
-                      onChange={(e) => handleUpdateVariant(idx, 'sellingPrice', e.target.value)}
-                      placeholder="99"
-                      className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
-                        errors[`variant_price_${idx}`] ? 'border-red-500 bg-red-50/50' : 'border-stone-300 bg-white'
-                      } focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-mono`}
-                    />
-                    {errors[`variant_price_${idx}`] && (
-                      <p className="text-[10px] text-red-600 mt-0.5">{errors[`variant_price_${idx}`]}</p>
-                    )}
-                  </div>
-
-                  {/* 4. Previous Price */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Previous Price (₹) <span className="text-stone-400 font-normal">(Opt)</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={v.previousPrice ?? v.mrp ?? ''}
-                      onChange={(e) => handleUpdateVariant(idx, 'previousPrice', e.target.value)}
-                      placeholder="120"
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white font-mono"
-                    />
-                  </div>
-
-                  {/* 5. Stock Status */}
-                  <div className="lg:col-span-1">
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Stock Status <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={v.stockStatus}
-                      onChange={(e) => handleUpdateVariant(idx, 'stockStatus', e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white font-medium"
-                    >
-                      {STOCK_STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 6. Growing Method / Note */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Growing Method / Note <span className="text-stone-400 font-normal">(Optional e.g. Hydroponically Grown, Soil Grown, Greenhouse Grown, Naturally Ripened)</span>
                   </label>
-                  <input
-                    type="text"
-                    value={v.note || ''}
-                    onChange={(e) => handleUpdateVariant(idx, 'note', e.target.value)}
-                    placeholder="e.g. Hydroponically Grown, Soil Grown, Greenhouse Grown..."
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  />
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Certification Details <span className="font-normal text-stone-400">(Optional)</span>
+                    <input
+                      type="text"
+                      value={range.certificationDetails || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'certificationDetails',
+                          event.target.value
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Certificate URL <span className="font-normal text-stone-400">(Optional)</span>
+                    <input
+                      type="url"
+                      value={range.certificationDocumentUrl || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'certificationDocumentUrl',
+                          event.target.value
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Lab Report URL <span className="font-normal text-stone-400">(Optional)</span>
+                    <input
+                      type="url"
+                      value={range.labReportUrl || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(rangeIndex, 'labReportUrl', event.target.value)
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Minimum Order Quantity <span className="font-normal text-stone-400">(Optional)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={range.minimumOrderQuantity ?? ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(
+                          rangeIndex,
+                          'minimumOrderQuantity',
+                          event.target.value
+                        )
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold text-stone-700">
+                    Internal Notes <span className="font-normal text-stone-400">(Admin only)</span>
+                    <input
+                      type="text"
+                      value={range.internalNotes || ''}
+                      onChange={(event) =>
+                        handleUpdateQualityRange(rangeIndex, 'internalNotes', event.target.value)
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </label>
                 </div>
 
-                {errors[`variant_duplicate_${idx}`] && (
-                  <p className="text-[11px] font-semibold text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">
-                    {errors[`variant_duplicate_${idx}`]}
-                  </p>
-                )}
-              </div>
+                <div className="rounded-xl border border-stone-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h5 className="text-xs font-mono font-bold uppercase text-stone-700">
+                        Pack-size Variants
+                      </h5>
+                      <p className="mt-0.5 text-[10px] text-stone-500">
+                        Pack sizes are range-specific and are not hardcoded.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddVariant(rangeIndex)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Pack Size
+                    </button>
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {range.variants.map((variant, variantIndex) => (
+                      <div
+                        key={variant.id}
+                        className="rounded-lg border border-stone-200 bg-stone-50 p-3"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-[10px] font-mono font-bold uppercase text-stone-500">
+                            Pack #{variantIndex + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVariant(rangeIndex, variantIndex)}
+                            disabled={range.variants.length === 1}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-400 hover:text-red-600 disabled:opacity-30"
+                          >
+                            <Trash2 className="h-3 w-3" /> Remove
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Pack Label <span className="text-red-500">*</span>
+                            <input
+                              type="text"
+                              value={variant.label}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'label',
+                                  event.target.value
+                                )
+                              }
+                              placeholder="e.g. 250 g"
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Quantity <span className="text-red-500">*</span>
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="any"
+                              value={variant.quantity ?? ''}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'quantity',
+                                  event.target.value
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Unit <span className="text-red-500">*</span>
+                            <input
+                              type="text"
+                              value={variant.unit || ''}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'unit',
+                                  event.target.value
+                                )
+                              }
+                              placeholder="g, kg, bunch"
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Selling Price (₹) <span className="text-red-500">*</span>
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="any"
+                              value={variant.sellingPrice ?? variant.price ?? ''}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'sellingPrice',
+                                  event.target.value
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Previous Price (₹) <span className="font-normal text-stone-400">(Optional)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={variant.previousPrice ?? variant.mrp ?? ''}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'previousPrice',
+                                  event.target.value
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            Stock Status <span className="text-red-500">*</span>
+                            <select
+                              value={variant.stockStatus}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'stockStatus',
+                                  event.target.value as StockStatus
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                              {STOCK_STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-[11px] font-semibold text-stone-700">
+                            SKU <span className="font-normal text-stone-400">(Optional)</span>
+                            <input
+                              type="text"
+                              value={variant.sku || ''}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'sku',
+                                  event.target.value
+                                )
+                              }
+                              className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </label>
+                          <label className="flex min-h-10 items-center gap-2 self-end rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700">
+                            <input
+                              type="checkbox"
+                              checked={variant.active !== false}
+                              onChange={(event) =>
+                                handleUpdateVariant(
+                                  rangeIndex,
+                                  variantIndex,
+                                  'active',
+                                  event.target.checked
+                                )
+                              }
+                              className="h-4 w-4 accent-emerald-800"
+                            />
+                            Active pack size
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
             ))}
           </div>
-          {errors.variants && <p className="text-[11px] text-red-600 font-semibold">{errors.variants}</p>}
+          {errors.qualityRanges && (
+            <p className="text-[11px] font-semibold text-red-600">
+              {errors.qualityRanges}
+            </p>
+          )}
         </div>
 
         {/* Footer Actions */}

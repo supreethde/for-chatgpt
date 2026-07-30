@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { CatalogProduct } from '../../types';
 import { getProductImageAlt } from './productImages';
+import {
+  getProductRangeSummary,
+  isProductAvailable,
+} from './productModel';
 
 const FIRST_IMAGE_DELAY_MS = 5_000;
 const LATER_IMAGE_DELAY_MS = 4_000;
@@ -82,12 +86,8 @@ export function ProductCard({
   );
   const displayDescription = hasValidDescription ? description.trim() : '';
   const { price, packSize } = getPriceDisplay(priceRange);
-  const sourcingTier = product.variants?.find(
-    (variant) => variant.sourcingTier
-  )?.sourcingTier;
-  const isAvailable = (product.variants ?? []).some(
-    (variant) => variant.stockStatus !== 'out_of_stock'
-  );
+  const rangeSummary = getProductRangeSummary(product);
+  const isAvailable = isProductAvailable(product);
 
   useEffect(
     () => () => {
@@ -382,10 +382,10 @@ export function ProductCard({
             )}
           </div>
 
-          {sourcingTier && (
+          {rangeSummary && (
             <span className="mt-3 inline-flex max-w-full items-center gap-1.5 bg-[#79966e]/10 px-2 py-1 text-[11px] font-semibold text-[#3e6927]">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{sourcingTier}</span>
+              <span className="truncate">{rangeSummary}</span>
             </span>
           )}
 
@@ -409,7 +409,7 @@ export function ProductCard({
             disabled={!isAvailable}
             className="mt-4 inline-flex min-h-9 w-full items-center justify-center bg-[#183b2b] px-3 py-2 text-xs font-bold text-[#c9dc74] transition-colors hover:bg-[#79966e] disabled:cursor-not-allowed disabled:bg-[#183b2b]/35 disabled:text-[#f4f0e7]"
           >
-            + Add 10kg {currentQuantity > 0 ? `(${currentQuantity}kg)` : ''}
+            + Add {currentQuantity > 0 ? `(${currentQuantity})` : ''}
           </button>
         </div>
       </div>

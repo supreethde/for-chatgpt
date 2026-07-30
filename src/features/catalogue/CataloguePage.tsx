@@ -16,6 +16,12 @@ import {
   DEFAULT_SOCIAL_IMAGE,
 } from '../seo/seo';
 import { CatalogProduct, SourcingTier, SOURCING_TIERS } from '../../types';
+import {
+  dedupeCatalogueProducts,
+  getActiveQualityRanges,
+  getLowestAvailablePrice,
+  isProductAvailable,
+} from '../products/productModel';
 
 type SortMode = 'recommended' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
 
@@ -57,11 +63,7 @@ const SHOP_DESCRIPTION =
   'Explore active, traceable produce from trusted farms, with transparent sourcing and dependable delivery for Bengaluru professional kitchens.';
 
 function getLowestPrice(product: CatalogProduct): number | null {
-  const prices = (product.variants || [])
-    .map((variant) => variant.sellingPrice ?? variant.price)
-    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price));
-
-  return prices.length > 0 ? Math.min(...prices) : null;
+  return getLowestAvailablePrice(product);
 }
 
 function FilterControls({
@@ -212,7 +214,7 @@ export function CataloguePage({
 
   const activeProducts = useMemo(
     () =>
-      products.filter((product) => {
+      dedupeCatalogueProducts(products).filter((product) => {
         const activeState = product.isActive ?? (product as CatalogProduct & { active?: boolean }).active ?? true;
         return activeState !== false && (!category || product.category === category.name);
       }),
@@ -236,15 +238,14 @@ export function CataloguePage({
           .some((value) => String(value).toLowerCase().includes(query));
 
       const matchesStock =
-        !inStockOnly ||
-        (product.variants || []).some((variant) => variant.stockStatus !== 'out_of_stock');
+        !inStockOnly || isProductAvailable(product);
 
       const matchesTier =
         selectedTiers.length === 0 ||
-        (product.variants || []).some(
-          (variant) =>
-            Boolean(variant.sourcingTier) &&
-            selectedTiers.includes(variant.sourcingTier as SourcingTier)
+        getActiveQualityRanges(product).some(
+          (range) =>
+            Boolean(range.assuranceTier) &&
+            selectedTiers.includes(range.assuranceTier as SourcingTier)
         );
 
       return matchesSearch && matchesStock && matchesTier;

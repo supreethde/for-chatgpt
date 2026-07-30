@@ -60,6 +60,7 @@ function decodeDocument(document: any): CatalogProduct {
     regionalNameKannada: fields.regionalNameKannada || fields.regionalNames?.kannada,
     regionalNameHindi: fields.regionalNameHindi || fields.regionalNames?.hindi,
     images: fields.images || [],
+    qualityRanges: fields.qualityRanges || [],
     variants: fields.variants || [],
     isActive: fields.isActive ?? fields.active ?? true,
     featuredProduct: fields.featuredProduct === true,

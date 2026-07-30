@@ -28,7 +28,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleAuthProvider } from './lib/firebase-auth';
-import { CatalogProduct } from './types';
+import { CartLineItem, CatalogProduct, ProductSelection } from './types';
 import {
   CataloguePreferences,
   CataloguePreferencesInput,
@@ -47,6 +47,13 @@ import {
   createOrganizationSchemas,
   DEFAULT_SOCIAL_IMAGE,
 } from './features/seo/seo';
+import {
+  createCartLineItem,
+  getActiveQualityRanges,
+  getActiveVariants,
+  getDefaultProductSelection,
+  getLowestAvailablePrice,
+} from './features/products/productModel';
 
 // Banner image imports
 import carrotsImg from './assets/images/1.webp';
@@ -58,29 +65,35 @@ import tomatoesImg from './assets/images/5.webp';
 const IS_DEVELOPMENT = Boolean(
   (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV
 );
+const CART_STORAGE_KEY = 'soil-theory-cart-v2';
 
 function getProductPriceRange(prod: CatalogProduct & Record<string, any>): string {
-  if (prod.priceRange && typeof prod.priceRange === 'string') {
-    return prod.priceRange;
+  const activeRanges = getActiveQualityRanges(prod);
+  const availableVariants = activeRanges.flatMap((range) =>
+    getActiveVariants(range).filter(
+      (variant) =>
+        range.stockStatus !== 'out_of_stock' && variant.stockStatus !== 'out_of_stock'
+    )
+  );
+  const lowestPrice = getLowestAvailablePrice(prod);
+
+  if (
+    activeRanges.length === 1 &&
+    availableVariants.length === 1 &&
+    lowestPrice !== null
+  ) {
+    return `₹${lowestPrice} / ${availableVariants[0].label}`;
   }
-  if (prod.variants && prod.variants.length > 0) {
-    const validPrices = prod.variants
-      .map(v => typeof v.sellingPrice === 'number' ? v.sellingPrice : (typeof v.price === 'number' ? v.price : 0))
-      .filter(p => p > 0);
-    if (validPrices.length > 0) {
-      const minP = Math.min(...validPrices);
-      const maxP = Math.max(...validPrices);
-      const label = prod.variants[0]?.label ? ` / ${prod.variants[0].label}` : ' / kg';
-      if (minP === maxP) {
-        return `₹${minP}${label}`;
-      }
-      return `₹${minP} - ₹${maxP} / kg`;
-    }
-  }
-  return '₹50 - ₹80 / kg';
+  if (lowestPrice !== null) return `From ₹${lowestPrice}`;
+  if (prod.priceRange && typeof prod.priceRange === 'string') return prod.priceRange;
+  return 'Price on request';
 }
 
 function getProductFarmSource(prod: CatalogProduct & Record<string, any>): string {
+  const sourceFarm = getActiveQualityRanges(prod).find((range) =>
+    Boolean(range.sourceFarm?.trim())
+  )?.sourceFarm;
+  if (sourceFarm) return sourceFarm;
   if (prod.farmSource && typeof prod.farmSource === 'string') {
     return prod.farmSource;
   }
@@ -91,6 +104,10 @@ function getProductFarmSource(prod: CatalogProduct & Record<string, any>): strin
 }
 
 function getProductWeeklyTestStatus(prod: CatalogProduct & Record<string, any>): string {
+  const certification = getActiveQualityRanges(prod).find((range) =>
+    Boolean(range.certificationDetails?.trim())
+  )?.certificationDetails;
+  if (certification) return certification;
   if (prod.weeklyTestStatus && typeof prod.weeklyTestStatus === 'string') {
     return prod.weeklyTestStatus;
   }
@@ -234,6 +251,14 @@ export default function App() {
   // Estimator State
   const [dailyRequirementKg, setDailyRequirementKg] = useState<number>(50);
   const [estimateQuantities, setEstimateQuantities] = useState<Record<string, number>>({});
+  const [cartItems, setCartItems] = useState<Record<string, CartLineItem>>(() => {
+    try {
+      const savedCart = window.localStorage.getItem(CART_STORAGE_KEY);
+      return savedCart ? JSON.parse(savedCart) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Inquiry Form State
   const [restaurantName, setRestaurantName] = useState('');
@@ -271,6 +296,45 @@ export default function App() {
   const wheelUnlockTimeoutRef = useRef<number | null>(null);
   const mobileBannerReadyFrameRef = useRef<number | null>(null);
   const hasMeasuredMobileBannerRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    } catch {
+      // Cart remains available for the current session if storage is unavailable.
+    }
+  }, [cartItems]);
+
+  const addProductSelectionToCart = (
+    product: CatalogProduct,
+    selection: ProductSelection
+  ) => {
+    const lineItem = createCartLineItem(product, selection);
+    if (!lineItem) return;
+    setCartItems((current) => ({
+      ...current,
+      [lineItem.id]: {
+        ...lineItem,
+        quantity: (current[lineItem.id]?.quantity || 0) + lineItem.quantity,
+      },
+    }));
+  };
+
+  const cartLines = (Object.values(cartItems) as CartLineItem[]).filter(
+    (item) => item.quantity > 0
+  );
+  const productCartQuantities = cartLines.reduce<Record<string, number>>(
+    (totals, item) => {
+      totals[item.productId] = (totals[item.productId] || 0) + item.quantity;
+      return totals;
+    },
+    {}
+  );
+  const getCartTotal = () =>
+    cartLines.reduce(
+      (total, item) => total + item.unitPrice * item.quantity,
+      0
+    );
 
   useEffect(() => {
     const updateBannerSlideWidth = () => {
@@ -867,10 +931,21 @@ export default function App() {
         const qty = estimateQuantities[prod.id] || 0;
         if (qty > 0) {
           let price = 68;
-          if (prod.variants && prod.variants.length > 0) {
-            const vPrice = typeof prod.variants[0].sellingPrice === 'number'
-              ? prod.variants[0].sellingPrice
-              : (typeof prod.variants[0].price === 'number' ? prod.variants[0].price : 68);
+          const defaultSelection = getDefaultProductSelection(prod);
+          const selectedRange = defaultSelection
+            ? getActiveQualityRanges(prod).find(
+                (range) => range.id === defaultSelection.qualityRangeId
+              )
+            : undefined;
+          const selectedVariant = selectedRange && defaultSelection
+            ? getActiveVariants(selectedRange).find(
+                (variant) => variant.id === defaultSelection.variantId
+              )
+            : undefined;
+          if (selectedVariant) {
+            const vPrice = typeof selectedVariant.sellingPrice === 'number'
+              ? selectedVariant.sellingPrice
+              : (typeof selectedVariant.price === 'number' ? selectedVariant.price : 68);
             if (vPrice > 0) price = vPrice;
           } else if ((prod as any).priceRange) {
             const match = String((prod as any).priceRange).match(/₹(\d+)/);
@@ -910,12 +985,39 @@ export default function App() {
     try {
       const token = await user.getIdToken();
       
-      const itemsList = products
-        .map((p) => {
-          const qty = estimateQuantities[p.id] || 0;
-          return qty > 0 ? `${p.name}: ${qty} kg` : null;
-        })
-        .filter(Boolean);
+      const itemsList =
+        cartLines.length > 0
+          ? cartLines.map(
+              (item) =>
+                `${item.productName} — ${
+                  item.assuranceTier || 'Assurance details pending'
+                } — ${item.cultivationMethod} — ${item.packLabel} × ${
+                  item.quantity
+                } @ ₹${item.unitPrice} = ₹${item.unitPrice * item.quantity}`
+            )
+          : products
+              .map((product) => {
+                const quantityKg = estimateQuantities[product.id] || 0;
+                if (quantityKg <= 0) return null;
+                const selection = getDefaultProductSelection(product);
+                const range = selection
+                  ? getActiveQualityRanges(product).find(
+                      (item) => item.id === selection.qualityRangeId
+                    )
+                  : undefined;
+                const variant = range && selection
+                  ? getActiveVariants(range).find(
+                      (item) => item.id === selection.variantId
+                    )
+                  : undefined;
+                const unitPrice = variant?.sellingPrice ?? variant?.price;
+                return range && variant && typeof unitPrice === 'number'
+                  ? `${product.name} — ${
+                      range.assuranceTier || 'Assurance details pending'
+                    } — ${range.cultivationMethod} — ${variant.label} — ${quantityKg} kg estimated @ ₹${unitPrice}`
+                  : null;
+              })
+              .filter((item): item is string => Boolean(item));
 
       const res = await fetch('/api/inquiries', {
         method: 'POST',
@@ -927,7 +1029,8 @@ export default function App() {
           restaurantName,
           contactNumber,
           items: itemsList.length > 0 ? itemsList.join(', ') : `Daily Produce Requirement: ${dailyRequirementKg} kg/day`,
-          estimatedCost: getEstimatedTotal()
+          estimatedCost:
+            cartLines.length > 0 ? getCartTotal() : getEstimatedTotal()
         })
       });
 
@@ -935,6 +1038,7 @@ export default function App() {
         setInquirySuccess(true);
         setRestaurantName('');
         setContactNumber('');
+        setCartItems({});
         setEstimateQuantities({});
         await fetchMyInquiries(user);
         setTimeout(() => setInquirySuccess(false), 5000);
@@ -947,8 +1051,8 @@ export default function App() {
   };
 
   // Cart Items Count
-  const cartItemCount = Object.values(estimateQuantities).filter((q: number) => q > 0).length;
-  const cartTotal = cartItemCount > 0 ? getEstimatedTotal() : 0;
+  const cartItemCount = cartLines.length;
+  const cartTotal = cartItemCount > 0 ? getCartTotal() : 0;
   const canSendCartInquiry =
     cartItemCount > 0 && deliveryServiceStatus !== 'unsupported';
 
@@ -971,7 +1075,7 @@ export default function App() {
   if (productPathMatch) {
     const productSlug = decodeURIComponent(productPathMatch[1]);
     const product = products.find((item) => item.slug.toLowerCase() === productSlug) || null;
-    const productQuantity = product ? estimateQuantities[product.id] || 0 : 0;
+    const productQuantity = product ? productCartQuantities[product.id] || 0 : 0;
 
     return (
       <ProductDetailPage
@@ -980,7 +1084,7 @@ export default function App() {
         priceRange={product ? getProductPriceRange(product) : ''}
         currentQuantity={productQuantity}
         products={products}
-        quantities={estimateQuantities}
+        quantities={productCartQuantities}
         getPriceRange={getProductPriceRange}
         getFarmSource={getProductFarmSource}
         getWeeklyStatus={getProductWeeklyTestStatus}
@@ -993,18 +1097,12 @@ export default function App() {
           navigateTo(path);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        onAdd={(quantityKg) => {
+        onAdd={(selection) => {
           if (!product) return;
-          setEstimateQuantities((current) => ({
-            ...current,
-            [product.id]: (current[product.id] || 0) + quantityKg,
-          }));
+          addProductSelectionToCart(product, selection);
         }}
-        onAddProduct={(relatedProduct) => {
-          setEstimateQuantities((current) => ({
-            ...current,
-            [relatedProduct.id]: (current[relatedProduct.id] || 0) + 10,
-          }));
+        onAddProduct={(relatedProduct, selection) => {
+          addProductSelectionToCart(relatedProduct, selection);
         }}
       />
     );
@@ -1247,25 +1345,36 @@ export default function App() {
                         </p>
                       </div>
                     ) : (
-                      products.map((prod) => {
-                        const qty = estimateQuantities[prod.id] || 0;
-                        if (qty <= 0) return null;
-                        return (
-                          <div key={prod.id} className="cart-item">
-                            <div className="cart-item-details">
-                              <span className="cart-item-title">{prod.name}</span>
-                              <span className="cart-item-subtitle">{qty} kg • {getProductPriceRange(prod)}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setEstimateQuantities(prev => ({ ...prev, [prod.id]: 0 }))}
-                              className="text-xs text-red-600 font-bold hover:underline"
-                            >
-                              Remove
-                            </button>
+                      cartLines.map((item) => (
+                        <div key={item.id} className="cart-item">
+                          <div className="cart-item-details">
+                            <span className="cart-item-title">{item.productName}</span>
+                            <span className="cart-item-subtitle">
+                              {item.qualityRangeLabel}
+                            </span>
+                            <span className="cart-item-subtitle">
+                              {item.cultivationMethod} • {item.packLabel} × {item.quantity}
+                            </span>
+                            <span className="cart-item-subtitle">
+                              ₹{item.unitPrice} each • ₹
+                              {(item.unitPrice * item.quantity).toLocaleString('en-IN')}
+                            </span>
                           </div>
-                        );
-                      })
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCartItems((current) => {
+                                const next = { ...current };
+                                delete next[item.id];
+                                return next;
+                              })
+                            }
+                            className="text-xs text-red-600 font-bold hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
                     )}
                   </div>
                   <div className="cart-dropdown-footer">
@@ -1611,7 +1720,7 @@ export default function App() {
           isLoading={productsLoading}
           error={productsError}
           searchQuery={searchQuery}
-          quantities={estimateQuantities}
+          quantities={productCartQuantities}
           preferences={cataloguePreferences}
           isAuthenticated={Boolean(auth.currentUser)}
           personalizationLoading={personalizationLoading}
@@ -1627,10 +1736,8 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onAdd={(product) => {
-            setEstimateQuantities((current) => ({
-              ...current,
-              [product.id]: (current[product.id] || 0) + 10,
-            }));
+            const selection = getDefaultProductSelection(product);
+            if (selection) addProductSelectionToCart(product, selection);
             setIsCartOpen(true);
           }}
           onRetry={loadProductsFromFirestore}
@@ -2133,7 +2240,10 @@ export default function App() {
                         <p className="font-mono text-[#183b2b]">
                           {cartItemCount > 0 ? `${cartItemCount} items selected in cart` : `Daily Requirement: ~${dailyRequirementKg} kg/day`}
                         </p>
-                        <p className="font-bold text-[#183b2b]">Estimated Cost: ₹{getEstimatedTotal().toLocaleString('en-IN')}</p>
+                        <p className="font-bold text-[#183b2b]">
+                          Estimated Cost: ₹
+                          {(cartItemCount > 0 ? cartTotal : getEstimatedTotal()).toLocaleString('en-IN')}
+                        </p>
                       </div>
 
                       <button

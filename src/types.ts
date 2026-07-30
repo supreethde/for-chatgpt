@@ -6,30 +6,68 @@ export type ProductCategory =
   | 'Exotics' 
   | 'Mushrooms';
 
-export type SourcingTier = 
+export type AssuranceTier =
   | 'Certified Organic'
   | 'Organically Grown'
   | 'Pesticide Residue Free';
 
-export const SOURCING_TIERS: SourcingTier[] = [
+// Kept as an alias so existing filter labels and persisted preferences remain compatible.
+export type SourcingTier = AssuranceTier;
+
+export const SOURCING_TIERS: AssuranceTier[] = [
   'Certified Organic',
   'Organically Grown',
   'Pesticide Residue Free',
+];
+
+export type CultivationMethod =
+  | 'Soil-grown'
+  | 'Hydroponically Grown'
+  | 'Protected Cultivation'
+  | 'Open-field Grown'
+  | 'Other';
+
+export const CULTIVATION_METHODS: CultivationMethod[] = [
+  'Soil-grown',
+  'Hydroponically Grown',
+  'Protected Cultivation',
+  'Open-field Grown',
+  'Other',
 ];
 
 export type StockStatus = 'in_stock' | 'out_of_stock' | 'low_stock';
 
 export interface ProductVariant {
   id: string;
-  sourcingTier?: SourcingTier; // Required on save, optional for un-updated legacy docs
   label: string; // Pack size e.g. "250 g", "500 g", "1 kg", "Bunch", "Piece"
+  quantity?: number;
+  unit?: string;
   sellingPrice?: number; // Selling price
   previousPrice?: number; // Optional previous price / MRP
+  active?: boolean;
   stockStatus: StockStatus;
-  note?: string; // Optional Growing Method / Note
+  sku?: string;
   // Legacy backward compatibility aliases
+  sourcingTier?: SourcingTier;
+  note?: string;
   price?: number;
   mrp?: number;
+}
+
+export interface ProductQualityRange {
+  id: string;
+  assuranceTier?: AssuranceTier;
+  cultivationMethod: CultivationMethod;
+  active: boolean;
+  stockStatus: StockStatus;
+  sourceFarm?: string;
+  certificationDetails?: string;
+  certificationDocumentUrl?: string;
+  labReportUrl?: string;
+  minimumOrderQuantity?: number;
+  internalNotes?: string;
+  requiresManualReview?: boolean;
+  variants: ProductVariant[];
 }
 
 export interface CatalogProduct {
@@ -45,13 +83,37 @@ export interface CatalogProduct {
   regionalNameKannada?: string;
   regionalNameHindi?: string;
   images: string[]; // Exactly 4 URLs: botanical, real product, benefits, why organic
-  variants: ProductVariant[];
+  qualityRanges?: ProductQualityRange[];
+  /** Legacy input only. Newly saved products use qualityRanges. */
+  variants?: ProductVariant[];
   isActive: boolean;
   featuredProduct?: boolean;
   promotionalPriority?: 'none' | 'low' | 'medium' | 'high';
   excludeFromRecommendations?: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ProductSelection {
+  qualityRangeId: string;
+  variantId: string;
+  quantity: number;
+}
+
+export interface CartLineItem {
+  id: string;
+  productId: string;
+  productSlug: string;
+  productName: string;
+  qualityRangeId: string;
+  variantId: string;
+  assuranceTier?: AssuranceTier;
+  cultivationMethod: CultivationMethod;
+  qualityRangeLabel: string;
+  packLabel: string;
+  unitPrice: number;
+  quantity: number;
+  imageUrl?: string;
 }
 
 export interface ProductImage {

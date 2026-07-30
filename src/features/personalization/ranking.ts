@@ -1,6 +1,10 @@
 import { CatalogProduct } from '../../types';
 import { BUSINESS_INGREDIENT_TERMS, CUISINE_INGREDIENT_TERMS } from './knowledgeBase';
 import { CataloguePreferences, RecommendationSignals } from './types';
+import {
+  getActiveQualityRanges,
+  getActiveVariants,
+} from '../products/productModel';
 
 const PROMOTIONAL_PRIORITY_WEIGHT = {
   none: 0,
@@ -26,9 +30,29 @@ function getProductSearchText(product: CatalogProduct): string {
 }
 
 function getAvailabilityScore(product: CatalogProduct): number {
-  if (!product.variants?.length) return 0;
-  if (product.variants.some((variant) => variant.stockStatus === 'in_stock')) return 16;
-  if (product.variants.some((variant) => variant.stockStatus === 'low_stock')) return 7;
+  const variants = getActiveQualityRanges(product).flatMap((range) =>
+    getActiveVariants(range).map((variant) => ({
+      rangeStatus: range.stockStatus,
+      variantStatus: variant.stockStatus,
+    }))
+  );
+  if (variants.length === 0) return 0;
+  if (
+    variants.some(
+      ({ rangeStatus, variantStatus }) =>
+        rangeStatus === 'in_stock' && variantStatus === 'in_stock'
+    )
+  ) {
+    return 16;
+  }
+  if (
+    variants.some(
+      ({ rangeStatus, variantStatus }) =>
+        rangeStatus !== 'out_of_stock' && variantStatus !== 'out_of_stock'
+    )
+  ) {
+    return 7;
+  }
   return -18;
 }
 

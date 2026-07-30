@@ -8,11 +8,18 @@ import {
   Plus,
   ShoppingCart,
 } from 'lucide-react';
-import { CatalogProduct } from '../../types';
+import { CatalogProduct, ProductSelection } from '../../types';
 import { ProductCard } from './ProductCard';
 import { getProductGallery } from './productImages';
 import { SeoHead } from '../seo/SeoHead';
 import { createProductSchemas, getCategorySeoByName } from '../seo/seo';
+import {
+  getActiveQualityRanges,
+  getActiveVariants,
+  getDefaultProductSelection,
+  getQualityRangeDisplayLabel,
+  isQualityRangeAvailable,
+} from './productModel';
 
 interface ProductDetailPageProps {
   product: CatalogProduct | null;
@@ -27,8 +34,8 @@ interface ProductDetailPageProps {
   getDescription: (product: CatalogProduct) => string;
   onBack: () => void;
   onNavigate: (path: string) => void;
-  onAdd: (quantityKg: number) => void;
-  onAddProduct: (product: CatalogProduct) => void;
+  onAdd: (selection: ProductSelection) => void;
+  onAddProduct: (product: CatalogProduct, selection: ProductSelection) => void;
 }
 
 export function ProductDetailPage({
@@ -65,16 +72,16 @@ export function ProductDetailPage({
       .slice(0, 4);
   }, [product, products]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedRangeId, setSelectedRangeId] = useState('');
   const [selectedVariantId, setSelectedVariantId] = useState('');
-  const [quantityKg, setQuantityKg] = useState(10);
+  const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
     setSelectedIndex(0);
-    const variants = product?.variants ?? [];
-    const initialVariant =
-      variants.find((variant) => variant.stockStatus !== 'out_of_stock') ?? variants[0];
-    setSelectedVariantId(initialVariant?.id ?? '');
-    setQuantityKg(10);
+    const initialSelection = product ? getDefaultProductSelection(product) : null;
+    setSelectedRangeId(initialSelection?.qualityRangeId ?? '');
+    setSelectedVariantId(initialSelection?.variantId ?? '');
+    setQuantity(initialSelection?.quantity ?? 1);
   }, [product?.slug]);
 
   if (isLoading) {
@@ -111,7 +118,12 @@ export function ProductDetailPage({
   }
 
   const selectedImage = gallery[selectedIndex] || gallery[0];
-  const variants = product.variants ?? [];
+  const qualityRanges = getActiveQualityRanges(product);
+  const selectedRange =
+    qualityRanges.find((range) => range.id === selectedRangeId) ??
+    qualityRanges.find(isQualityRangeAvailable) ??
+    qualityRanges[0];
+  const variants = selectedRange ? getActiveVariants(selectedRange) : [];
   const selectedVariant =
     variants.find((variant) => variant.id === selectedVariantId) ??
     variants.find((variant) => variant.stockStatus !== 'out_of_stock') ??
@@ -119,11 +131,11 @@ export function ProductDetailPage({
   const selectedPrice = selectedVariant
     ? selectedVariant.sellingPrice ?? selectedVariant.price
     : undefined;
-  const selectedSourcingTier =
-    selectedVariant?.sourcingTier ??
-    variants.find((variant) => variant.sourcingTier)?.sourcingTier;
   const isAvailable =
-    Boolean(selectedVariant) && selectedVariant?.stockStatus !== 'out_of_stock';
+    Boolean(selectedRange) &&
+    Boolean(selectedVariant) &&
+    isQualityRangeAvailable(selectedRange) &&
+    selectedVariant?.stockStatus !== 'out_of_stock';
   const regionalNames = [
     product.regionalNameKannada?.trim(),
     product.regionalNameHindi?.trim(),
@@ -131,27 +143,34 @@ export function ProductDetailPage({
   const highlights = (product.highlights ?? []).filter((highlight) =>
     Boolean(highlight?.trim())
   );
-  const legacyProduct = product as CatalogProduct & {
-    farmSource?: string;
-    weeklyTestStatus?: string;
-  };
   const transparencyDetails = [
-    legacyProduct.farmSource?.trim()
-      ? { label: 'Source', value: legacyProduct.farmSource.trim() }
+    selectedRange?.sourceFarm?.trim()
+      ? { label: 'Source', value: selectedRange.sourceFarm.trim() }
       : null,
-    legacyProduct.weeklyTestStatus?.trim()
-      ? { label: 'Testing', value: legacyProduct.weeklyTestStatus.trim() }
+    selectedRange?.certificationDetails?.trim()
+      ? { label: 'Certification', value: selectedRange.certificationDetails.trim() }
       : null,
-    ...Array.from(
-      new Set(
-        variants
-          .map((variant) => variant.note?.trim())
-          .filter((note): note is string => Boolean(note))
-      )
-    ).map((note) => ({ label: 'Growing note', value: note })),
+    selectedRange
+      ? { label: 'Cultivation', value: selectedRange.cultivationMethod }
+      : null,
   ].filter((detail): detail is { label: string; value: string } => Boolean(detail));
+  const minimumOrderQuantity = Math.max(
+    1,
+    Math.floor(selectedRange?.minimumOrderQuantity || 1)
+  );
   const categorySeo = getCategorySeoByName(product.category);
   const seoDescription = (product.shortIntro || product.description).slice(0, 160);
+  const selectQualityRange = (rangeId: string) => {
+    const range = qualityRanges.find((item) => item.id === rangeId);
+    if (!range) return;
+    const rangeVariants = getActiveVariants(range);
+    const initialVariant =
+      rangeVariants.find((variant) => variant.stockStatus !== 'out_of_stock') ??
+      rangeVariants[0];
+    setSelectedRangeId(range.id);
+    setSelectedVariantId(initialVariant?.id ?? '');
+    setQuantity(Math.max(1, Math.floor(range.minimumOrderQuantity || 1)));
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f0e7] text-[#183b2b]">
@@ -297,10 +316,10 @@ export function ProductDetailPage({
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-3 border-y border-[#183b2b]/15 py-4 text-xs">
-              {selectedSourcingTier && (
+              {selectedRange && (
                 <span className="inline-flex items-center gap-1.5 bg-[#79966e]/10 px-2.5 py-1.5 font-semibold text-[#3e6927]">
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  {selectedSourcingTier}
+                  {getQualityRangeDisplayLabel(selectedRange)}
                 </span>
               )}
               <span
@@ -317,6 +336,60 @@ export function ProductDetailPage({
                 {isAvailable ? 'In Stock' : 'Out of Stock'}
               </span>
             </div>
+
+            {qualityRanges.length > 0 && (
+              <section className="mt-6" aria-labelledby="quality-range-heading">
+                <h2
+                  id="quality-range-heading"
+                  className="!text-xs !leading-4 font-mono font-bold uppercase tracking-wider"
+                >
+                  Choose quality range
+                </h2>
+                <div
+                  className="mt-3 grid gap-2"
+                  role="radiogroup"
+                  aria-label="Quality range"
+                >
+                  {qualityRanges.map((range) => {
+                    const isSelected = selectedRange?.id === range.id;
+                    const rangeAvailable = isQualityRangeAvailable(range);
+                    return (
+                      <button
+                        key={range.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        aria-label={`${getQualityRangeDisplayLabel(range)}, ${range.cultivationMethod}, ${
+                          rangeAvailable ? 'available' : 'out of stock'
+                        }`}
+                        onClick={() => selectQualityRange(range.id)}
+                        className={`flex min-h-14 items-center justify-between gap-4 border px-3 py-2.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] ${
+                          isSelected
+                            ? 'border-[#183b2b] bg-[#183b2b] text-[#f4f0e7]'
+                            : 'border-[#183b2b]/15 bg-[#f4f0e7] text-[#183b2b] hover:border-[#79966e]'
+                        }`}
+                      >
+                        <span>
+                          <strong className="block">
+                            {range.assuranceTier || 'Quality details available on request'}
+                          </strong>
+                          <span
+                            className={`mt-1 block text-[11px] ${
+                              isSelected ? 'text-[#e9e3d5]' : 'text-[#55705c]'
+                            }`}
+                          >
+                            {range.cultivationMethod}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-semibold">
+                          {rangeAvailable ? 'Available' : 'Out of Stock'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {variants.length > 0 && (
               <section className="mt-6" aria-labelledby="available-packs-heading">
@@ -387,9 +460,13 @@ export function ProductDetailPage({
                 <div className="inline-flex min-h-11 items-center border border-[#183b2b]/20 bg-[#f4f0e7]">
                   <button
                     type="button"
-                    onClick={() => setQuantityKg((current) => Math.max(10, current - 10))}
-                    disabled={!isAvailable || quantityKg <= 10}
-                    aria-label="Decrease quantity by 10 kilograms"
+                    onClick={() =>
+                      setQuantity((current) =>
+                        Math.max(minimumOrderQuantity, current - 1)
+                      )
+                    }
+                    disabled={!isAvailable || quantity <= minimumOrderQuantity}
+                    aria-label="Decrease pack quantity"
                     className="inline-flex h-11 w-11 items-center justify-center text-[#183b2b] hover:bg-[#e9e3d5] disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     <Minus className="h-4 w-4" aria-hidden="true" />
@@ -398,13 +475,13 @@ export function ProductDetailPage({
                     aria-live="polite"
                     className="min-w-20 px-3 text-center font-mono text-sm font-bold"
                   >
-                    {quantityKg} kg
+                    {quantity}
                   </output>
                   <button
                     type="button"
-                    onClick={() => setQuantityKg((current) => current + 10)}
+                    onClick={() => setQuantity((current) => current + 1)}
                     disabled={!isAvailable}
-                    aria-label="Increase quantity by 10 kilograms"
+                    aria-label="Increase pack quantity"
                     className="inline-flex h-11 w-11 items-center justify-center text-[#183b2b] hover:bg-[#e9e3d5] disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
@@ -412,27 +489,43 @@ export function ProductDetailPage({
                 </div>
                 {currentQuantity > 0 && (
                   <span className="text-right text-xs text-[#55705c]">
-                    {currentQuantity}kg already selected
+                    {currentQuantity} already selected
                   </span>
                 )}
               </div>
+              {selectedRange?.minimumOrderQuantity && (
+                <p className="mt-2 text-[11px] text-[#55705c]">
+                  Minimum order: {minimumOrderQuantity}
+                </p>
+              )}
             </div>
 
             <button
               type="button"
-              onClick={() => onAdd(quantityKg)}
+              onClick={() => {
+                if (!selectedRange || !selectedVariant) return;
+                onAdd({
+                  qualityRangeId: selectedRange.id,
+                  variantId: selectedVariant.id,
+                  quantity,
+                });
+              }}
               disabled={!isAvailable}
               className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 bg-[#183b2b] px-5 py-3 text-sm font-bold text-[#c9dc74] transition-colors hover:bg-[#25543e] disabled:cursor-not-allowed disabled:bg-[#183b2b]/35 disabled:text-[#f4f0e7]"
             >
               <ShoppingCart className="h-4 w-4" aria-hidden="true" />
-              {isAvailable ? `Add ${quantityKg}kg to inquiry` : 'Out of Stock'}
+              {isAvailable
+                ? `Add ${quantity} × ${selectedVariant?.label || 'pack'} to inquiry`
+                : 'Out of Stock'}
             </button>
           </article>
         </div>
 
         {(product.description?.trim() ||
           highlights.length > 0 ||
-          transparencyDetails.length > 0) && (
+          transparencyDetails.length > 0 ||
+          selectedRange?.certificationDocumentUrl ||
+          selectedRange?.labReportUrl) && (
           <div className="mt-12 grid gap-8 border-t border-[#183b2b]/15 pt-10 lg:grid-cols-3">
             {product.description?.trim() && (
               <section
@@ -477,7 +570,9 @@ export function ProductDetailPage({
               </section>
             )}
 
-            {transparencyDetails.length > 0 && (
+            {(transparencyDetails.length > 0 ||
+              selectedRange?.certificationDocumentUrl ||
+              selectedRange?.labReportUrl) && (
               <section
                 className="border-t border-[#183b2b]/15 pt-8 lg:col-span-3"
                 aria-labelledby="product-transparency-heading"
@@ -503,6 +598,31 @@ export function ProductDetailPage({
                     </div>
                   ))}
                 </dl>
+                {(selectedRange?.certificationDocumentUrl ||
+                  selectedRange?.labReportUrl) && (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {selectedRange.certificationDocumentUrl && (
+                      <a
+                        href={selectedRange.certificationDocumentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
+                      >
+                        View certificate
+                      </a>
+                    )}
+                    {selectedRange.labReportUrl && (
+                      <a
+                        href={selectedRange.labReportUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
+                      >
+                        View lab report
+                      </a>
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </div>
@@ -537,7 +657,10 @@ export function ProductDetailPage({
                     description={getDescription(relatedProduct)}
                     currentQuantity={quantities[relatedProduct.id] || 0}
                     onOpen={() => onNavigate(relatedHref)}
-                    onAdd={() => onAddProduct(relatedProduct)}
+                    onAdd={() => {
+                      const selection = getDefaultProductSelection(relatedProduct);
+                      if (selection) onAddProduct(relatedProduct, selection);
+                    }}
                   />
                 );
               })}
