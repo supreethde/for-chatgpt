@@ -237,8 +237,7 @@ export default function App() {
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
+  const [isAutoplayPaused, setIsAutoplayPaused] = useState(false);
   const [isMobileBannerReady, setIsMobileBannerReady] = useState(false);
 
   const [isMobile, setIsMobile] = useState<boolean>(
@@ -256,6 +255,9 @@ export default function App() {
   const isHorizontalDragRef = useRef<boolean | null>(null);
   const wheelAccumulatorRef = useRef<number>(0);
   const wheelLockRef = useRef<boolean>(false);
+  const autoplayIntervalRef = useRef<number | null>(null);
+  const autoplayResumeTimeoutRef = useRef<number | null>(null);
+  const wheelUnlockTimeoutRef = useRef<number | null>(null);
   const mobileBannerReadyFrameRef = useRef<number | null>(null);
   const hasMeasuredMobileBannerRef = useRef(false);
 
@@ -339,17 +341,55 @@ export default function App() {
     };
   }, [isMobileMenuOpen]);
 
-  // Autoplay timer: Pauses when dragging, hovered, or focused
-  useEffect(() => {
-    if (isDragging || isHovered || isFocused) return;
+  const clearAutoplayInterval = () => {
+    if (autoplayIntervalRef.current !== null) {
+      window.clearInterval(autoplayIntervalRef.current);
+      autoplayIntervalRef.current = null;
+    }
+  };
 
-    const interval = setInterval(() => {
+  const pauseCarouselAutoplay = () => {
+    clearAutoplayInterval();
+    if (autoplayResumeTimeoutRef.current !== null) {
+      window.clearTimeout(autoplayResumeTimeoutRef.current);
+      autoplayResumeTimeoutRef.current = null;
+    }
+    setIsAutoplayPaused(true);
+  };
+
+  const scheduleCarouselAutoplayResume = () => {
+    if (autoplayResumeTimeoutRef.current !== null) {
+      window.clearTimeout(autoplayResumeTimeoutRef.current);
+    }
+    autoplayResumeTimeoutRef.current = window.setTimeout(() => {
+      autoplayResumeTimeoutRef.current = null;
+      setIsAutoplayPaused(false);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    clearAutoplayInterval();
+    if (isAutoplayPaused) return;
+
+    autoplayIntervalRef.current = window.setInterval(() => {
       setIsTransitioning(true);
       setBannerIndex((prev) => prev + 1);
     }, 4500);
 
-    return () => clearInterval(interval);
-  }, [isDragging, isHovered, isFocused]);
+    return clearAutoplayInterval;
+  }, [isAutoplayPaused]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoplayInterval();
+      if (autoplayResumeTimeoutRef.current !== null) {
+        window.clearTimeout(autoplayResumeTimeoutRef.current);
+      }
+      if (wheelUnlockTimeoutRef.current !== null) {
+        window.clearTimeout(wheelUnlockTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTransitioning) {
@@ -378,6 +418,7 @@ export default function App() {
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
 
+    pauseCarouselAutoplay();
     dragStartXRef.current = e.clientX;
     dragStartYRef.current = e.clientY;
     activePointerIdRef.current = e.pointerId;
@@ -432,6 +473,7 @@ export default function App() {
     setDragOffset(0);
     isHorizontalDragRef.current = null;
     activePointerIdRef.current = null;
+    scheduleCarouselAutoplayResume();
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -443,6 +485,7 @@ export default function App() {
       setDragOffset(0);
       isHorizontalDragRef.current = null;
       activePointerIdRef.current = null;
+      scheduleCarouselAutoplayResume();
     }
   };
 
@@ -455,6 +498,9 @@ export default function App() {
       // Allow vertical page scrolling normally
       return;
     }
+
+    pauseCarouselAutoplay();
+    scheduleCarouselAutoplayResume();
 
     if (wheelLockRef.current) return;
 
@@ -473,8 +519,12 @@ export default function App() {
 
       wheelAccumulatorRef.current = 0;
 
-      setTimeout(() => {
+      if (wheelUnlockTimeoutRef.current !== null) {
+        window.clearTimeout(wheelUnlockTimeoutRef.current);
+      }
+      wheelUnlockTimeoutRef.current = window.setTimeout(() => {
         wheelLockRef.current = false;
+        wheelUnlockTimeoutRef.current = null;
       }, 600);
     }
   };
@@ -482,18 +532,17 @@ export default function App() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
+      pauseCarouselAutoplay();
+      scheduleCarouselAutoplayResume();
       setIsTransitioning(true);
       setBannerIndex((prev) => prev - 1);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
+      pauseCarouselAutoplay();
+      scheduleCarouselAutoplayResume();
       setIsTransitioning(true);
       setBannerIndex((prev) => prev + 1);
     }
-  };
-
-  const handleDotClick = (idx: number) => {
-    setIsTransitioning(true);
-    setBannerIndex(5 + idx);
   };
 
   const navigateTo = (path: string) => {
@@ -1550,10 +1599,6 @@ export default function App() {
             tabIndex={0}
             role="region"
             aria-label="Promotional Banners Carousel"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
             onWheel={handleWheel}
             onPointerDown={handlePointerDown}
@@ -1607,24 +1652,6 @@ export default function App() {
                 })}
               </div>
             </div>
-          </div>
-
-          <div
-            className="banner-dots"
-            style={isMobile && !isMobileBannerReady ? { visibility: 'hidden' } : undefined}
-          >
-            {bannerItems.map((_, idx) => {
-              const activeDotIndex = ((bannerIndex % bannerItems.length) + bannerItems.length) % bannerItems.length;
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  className={`banner-dot ${activeDotIndex === idx ? 'active' : ''}`}
-                  onClick={() => handleDotClick(idx)}
-                  aria-label={`Banner slide ${idx + 1}`}
-                />
-              );
-            })}
           </div>
         </section>
 

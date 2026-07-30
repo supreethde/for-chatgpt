@@ -1409,29 +1409,6 @@ footer .wordmark i {
   transform: scale(1.04);
 }
 
-.banner-dots {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.banner-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--line);
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.banner-dot.active {
-  background: var(--ink);
-  width: 28px;
-  border-radius: 10px;
-}
-
 @media(max-width: 900px) {
   .hero { grid-template-columns: 1fr; width: 100%; max-width: 100%; overflow: hidden; }
   .hero-art { min-height: 320px; max-height: 420px; grid-row: 1; width: 100%; max-width: 100%; overflow: hidden; }
