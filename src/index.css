@@ -1436,6 +1436,20 @@ footer .wordmark i {
 }
 
 @media(max-width: 768px) {
+  .hero-art {
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    overflow: visible;
+    align-items: flex-start;
+  }
+
+  .hero-art svg {
+    width: 100% !important;
+    height: auto !important;
+    flex: 0 0 auto;
+  }
+
   .site-header-container .header-location-block,
   .site-header-container .header-search-container,
   .site-header-container .header-inline-nav { 
