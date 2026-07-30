@@ -12,6 +12,10 @@ import { auth } from '../lib/firebase-auth';
 import { firestoreDb as db } from '../lib/firebase-firestore';
 import { CatalogProduct } from '../types';
 
+const IS_DEVELOPMENT = Boolean(
+  (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV
+);
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -45,8 +49,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const developmentDetails = JSON.stringify(errInfo);
+  if (IS_DEVELOPMENT) {
+    console.error('Product service error:', developmentDetails);
+  }
+  throw new Error(
+    IS_DEVELOPMENT ? developmentDetails : 'Product service is temporarily unavailable.'
+  );
 }
 
 const PRODUCTS_COLLECTION = 'products';
@@ -114,7 +123,9 @@ export async function fetchProductsFromFirestore(): Promise<CatalogProduct[]> {
 
     return products;
   } catch (error) {
-    console.error('Failed to fetch products from Firestore collection "products":', error);
+    if (IS_DEVELOPMENT) {
+      console.error('Failed to fetch products:', error);
+    }
     handleFirestoreError(error, OperationType.LIST, PRODUCTS_COLLECTION);
     return [];
   }

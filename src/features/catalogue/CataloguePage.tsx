@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Filter, Leaf, Loader2, RotateCcw, Search } from 'lucide-react';
+import { Filter, Leaf, RotateCcw, Search } from 'lucide-react';
 import { CataloguePersonalization } from '../personalization/CataloguePersonalization';
 import { rankCatalogueProducts } from '../personalization/ranking';
 import {
@@ -132,6 +132,27 @@ function FilterControls({
         </button>
       )}
     </div>
+  );
+}
+
+function ProductCardSkeleton() {
+  return (
+    <article
+      aria-hidden="true"
+      className="h-full animate-pulse border border-[#e9e3d5] bg-white p-5 motion-reduce:animate-none"
+    >
+      <div className="aspect-square w-full rounded-t-xl bg-[#e9e3d5]" />
+      <div className="mt-4 h-5 w-20 bg-[#f48b4d]/10" />
+      <div className="mt-4 h-6 w-4/5 bg-[#e9e3d5]" />
+      <div className="mt-2 h-3 w-full bg-[#e9e3d5]/70" />
+      <div className="mt-2 h-3 w-3/4 bg-[#e9e3d5]/70" />
+      <div className="mt-5 border-t border-[#e9e3d5] pt-4">
+        <div className="h-5 w-28 bg-[#e9e3d5]" />
+        <div className="mt-3 h-6 w-32 bg-[#79966e]/10" />
+        <div className="mt-3 h-3 w-20 bg-[#e9e3d5]" />
+        <div className="mt-4 h-10 w-full bg-[#183b2b]/15" />
+      </div>
+    </article>
   );
 }
 
@@ -556,9 +577,19 @@ export function CataloguePage({
               )}
 
               {isLoading ? (
-                <div className="border border-[#183b2b]/15 bg-white p-12 text-center">
-                  <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#79966e]" />
-                  <p className="mt-3 text-xs font-mono">Loading seasonal availability…</p>
+                <div role="status" aria-live="polite">
+                  <span className="sr-only">Loading products…</span>
+                  <div
+                    className={
+                      category
+                        ? 'category-product-grid grid gap-5'
+                        : 'grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3'
+                    }
+                  >
+                    {Array.from({ length: 6 }, (_, index) => (
+                      <ProductCardSkeleton key={index} />
+                    ))}
+                  </div>
                 </div>
               ) : error ? (
                 <div className="border border-red-200 bg-red-50 p-8 text-center text-red-900">

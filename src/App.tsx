@@ -55,6 +55,10 @@ import spinachImg from './assets/images/3.webp';
 import microgreensImg from './assets/images/4.webp';
 import tomatoesImg from './assets/images/5.webp';
 
+const IS_DEVELOPMENT = Boolean(
+  (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV
+);
+
 function getProductPriceRange(prod: CatalogProduct & Record<string, any>): string {
   if (prod.priceRange && typeof prod.priceRange === 'string') {
     return prod.priceRange;
@@ -635,33 +639,20 @@ export default function App() {
       setLoading(true);
       await signInWithPopup(auth, googleAuthProvider);
     } catch (error: any) {
-      console.error('Google Sign-In failed:', error);
-      let message = 'Google Sign-In failed. Please try again.';
-      if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('auth/unauthorized-domain')) {
-        message = `Google Sign-In requires adding "${typeof window !== 'undefined' ? window.location.hostname : 'this domain'}" to Authorized Domains in your Firebase Console (Authentication > Settings > Authorized Domains).`;
-      } else if (error?.code === 'auth/popup-blocked') {
+      if (IS_DEVELOPMENT) {
+        console.error('Google Sign-In failed:', error);
+      }
+
+      let message = 'Google Sign-In is temporarily unavailable. Please try again later.';
+      if (error?.code === 'auth/popup-blocked') {
         message = 'The sign-in popup was blocked by your browser. Please allow popups for this site.';
       } else if (error?.code === 'auth/popup-closed-by-user') {
         message = 'The sign-in popup was closed before completion.';
-      } else if (error?.message) {
-        message = error.message;
       }
       setAuthError(message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDemoLogin = () => {
-    const demoUser = {
-      uid: 'demo-partner-kitchen-1',
-      displayName: 'Bengaluru Chef Partner (Demo)',
-      email: 'chef@soiltheory.in',
-      photoURL: null,
-      getIdToken: async () => 'demo-token-123'
-    };
-    setUser(demoUser);
-    setAuthError(null);
   };
 
   const handleSaveCataloguePreferences = async (
@@ -730,21 +721,16 @@ export default function App() {
     try {
       const { fetchProductsFromFirestore } = await import('./services/productService');
       const data = await fetchProductsFromFirestore();
-      console.log(`[Produce Catalog] Loaded ${data.length} products from Firestore collection "products".`);
-      setProducts(data);
-    } catch (err: any) {
-      productsLoadStartedRef.current = false;
-      console.error('[Produce Catalog Error] Failed to load products from Firestore "products" collection:', err);
-      let errorMsg = 'Unable to connect to produce catalog database. Please check your network or try refreshing.';
-      if (err instanceof Error && err.message) {
-        try {
-          const parsed = JSON.parse(err.message);
-          if (parsed.error) errorMsg = `Database error: ${parsed.error}`;
-        } catch {
-          errorMsg = err.message;
-        }
+      if (IS_DEVELOPMENT) {
+        console.log(`[Produce Catalog] Loaded ${data.length} products.`);
       }
-      setProductsError(errorMsg);
+      setProducts(data);
+    } catch (err) {
+      productsLoadStartedRef.current = false;
+      if (IS_DEVELOPMENT) {
+        console.error('[Produce Catalog] Failed to load products:', err);
+      }
+      setProductsError('Products are temporarily unavailable. Please try again.');
     } finally {
       setProductsLoading(false);
     }
@@ -1080,8 +1066,8 @@ export default function App() {
                   <AlertCircle className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-serif text-lg font-bold text-stone-900">Partner Authentication Notice</h3>
-                  <p className="text-xs text-stone-500">Google Sign-In configuration</p>
+                  <h3 className="font-serif text-lg font-bold text-stone-900">Sign-In Unavailable</h3>
+                  <p className="text-xs text-stone-500">Please try again in a moment.</p>
                 </div>
               </div>
 
@@ -1092,10 +1078,10 @@ export default function App() {
               <div className="pt-2 flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
-                  onClick={handleDemoLogin}
+                  onClick={handleLogin}
                   className="flex-1 bg-[#183b2b] hover:bg-[#25543e] text-[#f4f0e7] font-medium text-xs py-2.5 px-4 rounded-xl transition-all text-center cursor-pointer"
                 >
-                  Sign In with Demo Partner Account
+                  Try Google Sign-In Again
                 </button>
                 <button
                   type="button"
