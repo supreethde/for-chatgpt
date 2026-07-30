@@ -4,10 +4,12 @@ import {
   CheckCircle2,
   Leaf,
   Loader2,
-  MapPin,
+  Minus,
+  Plus,
   ShoppingCart,
 } from 'lucide-react';
 import { CatalogProduct } from '../../types';
+import { ProductCard } from './ProductCard';
 import { getProductGallery } from './productImages';
 import { SeoHead } from '../seo/SeoHead';
 import { createProductSchemas, getCategorySeoByName } from '../seo/seo';
@@ -16,29 +18,63 @@ interface ProductDetailPageProps {
   product: CatalogProduct | null;
   isLoading: boolean;
   priceRange: string;
-  farmSource: string;
-  weeklyStatus: string;
   currentQuantity: number;
+  products: CatalogProduct[];
+  quantities: Record<string, number>;
+  getPriceRange: (product: CatalogProduct) => string;
+  getFarmSource: (product: CatalogProduct) => string;
+  getWeeklyStatus: (product: CatalogProduct) => string;
+  getDescription: (product: CatalogProduct) => string;
   onBack: () => void;
-  onAdd: () => void;
+  onNavigate: (path: string) => void;
+  onAdd: (quantityKg: number) => void;
+  onAddProduct: (product: CatalogProduct) => void;
 }
 
 export function ProductDetailPage({
   product,
   isLoading,
   priceRange,
-  farmSource,
-  weeklyStatus,
   currentQuantity,
+  products,
+  quantities,
+  getPriceRange,
+  getFarmSource,
+  getWeeklyStatus,
+  getDescription,
   onBack,
+  onNavigate,
   onAdd,
+  onAddProduct,
 }: ProductDetailPageProps) {
   const gallery = useMemo(() => (product ? getProductGallery(product) : []), [product]);
   const schemas = useMemo(() => (product ? createProductSchemas(product) : []), [product]);
+  const relatedProducts = useMemo(() => {
+    if (!product) return [];
+
+    return products
+      .filter((item) => {
+        const activeState =
+          item.isActive ?? (item as CatalogProduct & { active?: boolean }).active ?? true;
+        return (
+          activeState !== false &&
+          item.id !== product.id &&
+          item.category === product.category
+        );
+      })
+      .slice(0, 4);
+  }, [product, products]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedVariantId, setSelectedVariantId] = useState('');
+  const [quantityKg, setQuantityKg] = useState(10);
 
   useEffect(() => {
     setSelectedIndex(0);
+    const variants = product?.variants ?? [];
+    const initialVariant =
+      variants.find((variant) => variant.stockStatus !== 'out_of_stock') ?? variants[0];
+    setSelectedVariantId(initialVariant?.id ?? '');
+    setQuantityKg(10);
   }, [product?.slug]);
 
   if (isLoading) {
@@ -75,6 +111,45 @@ export function ProductDetailPage({
   }
 
   const selectedImage = gallery[selectedIndex] || gallery[0];
+  const variants = product.variants ?? [];
+  const selectedVariant =
+    variants.find((variant) => variant.id === selectedVariantId) ??
+    variants.find((variant) => variant.stockStatus !== 'out_of_stock') ??
+    variants[0];
+  const selectedPrice = selectedVariant
+    ? selectedVariant.sellingPrice ?? selectedVariant.price
+    : undefined;
+  const selectedSourcingTier =
+    selectedVariant?.sourcingTier ??
+    variants.find((variant) => variant.sourcingTier)?.sourcingTier;
+  const isAvailable =
+    Boolean(selectedVariant) && selectedVariant?.stockStatus !== 'out_of_stock';
+  const regionalNames = [
+    product.regionalNameKannada?.trim(),
+    product.regionalNameHindi?.trim(),
+  ].filter((name): name is string => Boolean(name));
+  const highlights = (product.highlights ?? []).filter((highlight) =>
+    Boolean(highlight?.trim())
+  );
+  const legacyProduct = product as CatalogProduct & {
+    farmSource?: string;
+    weeklyTestStatus?: string;
+  };
+  const transparencyDetails = [
+    legacyProduct.farmSource?.trim()
+      ? { label: 'Source', value: legacyProduct.farmSource.trim() }
+      : null,
+    legacyProduct.weeklyTestStatus?.trim()
+      ? { label: 'Testing', value: legacyProduct.weeklyTestStatus.trim() }
+      : null,
+    ...Array.from(
+      new Set(
+        variants
+          .map((variant) => variant.note?.trim())
+          .filter((note): note is string => Boolean(note))
+      )
+    ).map((note) => ({ label: 'Growing note', value: note })),
+  ].filter((detail): detail is { label: string; value: string } => Boolean(detail));
   const categorySeo = getCategorySeoByName(product.category);
   const seoDescription = (product.shortIntro || product.description).slice(0, 160);
 
@@ -106,11 +181,15 @@ export function ProductDetailPage({
       <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 sm:py-10">
         <nav aria-label="Breadcrumb" className="mb-6 text-[11px] font-mono text-[#55705c]">
           <button type="button" onClick={onBack} className="hover:text-[#183b2b] hover:underline">
-            Produce Catalogue
+            Shop
           </button>
           <span aria-hidden="true"> / </span>
           <a
-            href={`/produce/category/${categorySeo.slug}`}
+            href={`/${categorySeo.slug}`}
+            onClick={(event) => {
+              event.preventDefault();
+              onNavigate(`/${categorySeo.slug}`);
+            }}
             className="hover:text-[#183b2b] hover:underline"
           >
             {product.category}
@@ -123,7 +202,7 @@ export function ProductDetailPage({
           <section aria-label={`${product.name} image gallery`}>
             {selectedImage ? (
               <figure className="overflow-hidden border border-[#183b2b]/15 bg-white">
-                <div className="aspect-square bg-[#e9e3d5]/50">
+                <div className="aspect-square bg-[#e9e3d5]/50 p-5">
                   <img
                     src={selectedImage.url}
                     alt={selectedImage.alt}
@@ -134,16 +213,18 @@ export function ProductDetailPage({
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                 </div>
                 <figcaption className="flex items-center justify-between gap-3 border-t border-[#183b2b]/10 px-4 py-3">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#f48b4d]">
                     {selectedImage.label}
                   </span>
-                  <span className="text-xs text-[#55705c]">
-                    {selectedIndex + 1} of {gallery.length}
-                  </span>
+                  {gallery.length > 1 && (
+                    <span className="text-xs text-[#55705c]">
+                      {selectedIndex + 1} of {gallery.length}
+                    </span>
+                  )}
                 </figcaption>
               </figure>
             ) : (
@@ -164,22 +245,24 @@ export function ProductDetailPage({
                     onClick={() => setSelectedIndex(index)}
                     aria-label={`View ${image.label}`}
                     aria-pressed={selectedIndex === index}
-                    className={`overflow-hidden border-2 bg-white text-left transition-colors ${
+                    className={`overflow-hidden border-2 bg-white text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] ${
                       selectedIndex === index
                         ? 'border-[#183b2b]'
                         : 'border-transparent hover:border-[#79966e]'
                     }`}
                   >
-                    <img
-                      src={image.url}
-                      alt=""
-                      width={240}
-                      height={240}
-                      sizes="(max-width: 639px) 22vw, 8rem"
-                      loading="lazy"
-                      decoding="async"
-                      className="aspect-square h-full w-full object-cover"
-                    />
+                    <span className="block aspect-square bg-[#f4f0e7] p-2">
+                      <img
+                        src={image.url}
+                        alt=""
+                        width={240}
+                        height={240}
+                        sizes="(max-width: 639px) 22vw, 8rem"
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-contain"
+                      />
+                    </span>
                     <span className="block truncate px-2 py-1.5 text-[9px] font-mono font-bold uppercase text-[#55705c]">
                       {image.label}
                     </span>
@@ -189,50 +272,204 @@ export function ProductDetailPage({
             )}
           </section>
 
-          <article className="self-start lg:sticky lg:top-6">
+          <article className="self-start border border-[#183b2b]/15 bg-white p-5 sm:p-7">
             <span className="inline-block bg-[#f48b4d]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#f48b4d]">
               {product.category}
             </span>
-            <h1 className="mt-3 font-serif text-4xl font-bold leading-tight sm:text-5xl">
+            <h1 className="mt-3 break-words font-serif text-4xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-5xl">
               {product.name}
             </h1>
-            {product.scientificName && (
-              <p className="mt-2 font-serif text-sm italic text-[#55705c]">
+
+            {regionalNames.length > 0 && (
+              <p className="mt-3 text-sm font-semibold text-[#55705c]">
+                {regionalNames.join(' · ')}
+              </p>
+            )}
+            {product.scientificName?.trim() && (
+              <p className="mt-1 font-serif text-sm italic text-[#79966e]">
                 {product.scientificName}
               </p>
             )}
-            <p className="mt-5 text-sm leading-7 text-[#55705c]">{product.description}</p>
+            {product.shortIntro?.trim() && (
+              <p className="mt-5 text-sm leading-7 text-[#55705c]">
+                {product.shortIntro}
+              </p>
+            )}
 
-            <div className="mt-6 grid gap-3 border-y border-[#183b2b]/15 py-5 text-xs">
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-[#55705c]">Price</span>
-                <strong className="text-right font-mono text-[#183b2b]">{priceRange}</strong>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="inline-flex items-center gap-1.5 text-[#55705c]">
-                  <MapPin className="h-3.5 w-3.5 text-[#f48b4d]" />
-                  Source
+            <div className="mt-6 flex flex-wrap items-center gap-3 border-y border-[#183b2b]/15 py-4 text-xs">
+              {selectedSourcingTier && (
+                <span className="inline-flex items-center gap-1.5 bg-[#79966e]/10 px-2.5 py-1.5 font-semibold text-[#3e6927]">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {selectedSourcingTier}
                 </span>
-                <strong className="max-w-[65%] text-right text-[#183b2b]">{farmSource}</strong>
+              )}
+              <span
+                className={`inline-flex items-center gap-2 font-semibold ${
+                  isAvailable ? 'text-[#3e6927]' : 'text-[#f48b4d]'
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    isAvailable ? 'bg-[#79966e]' : 'bg-[#f48b4d]'
+                  }`}
+                  aria-hidden="true"
+                />
+                {isAvailable ? 'In Stock' : 'Out of Stock'}
+              </span>
+            </div>
+
+            {variants.length > 0 && (
+              <section className="mt-6" aria-labelledby="available-packs-heading">
+                <h2
+                  id="available-packs-heading"
+                  className="!text-xs !leading-4 font-mono font-bold uppercase tracking-wider"
+                >
+                  Choose pack size
+                </h2>
+                <div
+                  className="mt-3 grid gap-2 sm:grid-cols-2"
+                  role="radiogroup"
+                  aria-label="Pack size"
+                >
+                  {variants.map((variant) => {
+                    const variantPrice = variant.sellingPrice ?? variant.price;
+                    const variantAvailable = variant.stockStatus !== 'out_of_stock';
+                    const isSelected = selectedVariant?.id === variant.id;
+
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        disabled={!variantAvailable}
+                        onClick={() => setSelectedVariantId(variant.id)}
+                        className={`flex min-h-12 items-center justify-between gap-3 border px-3 py-2.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] disabled:cursor-not-allowed disabled:opacity-45 ${
+                          isSelected
+                            ? 'border-[#183b2b] bg-[#183b2b] text-[#f4f0e7]'
+                            : 'border-[#183b2b]/15 bg-[#f4f0e7] text-[#183b2b] hover:border-[#79966e]'
+                        }`}
+                      >
+                        <strong>{variant.label}</strong>
+                        {typeof variantPrice === 'number' && (
+                          <span className="shrink-0 font-mono font-bold">
+                            ₹{variantPrice}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            <div className="mt-6 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#79966e]">
+                  Price
+                </p>
+                <p className="mt-1 font-mono text-2xl font-bold text-[#183b2b]" aria-live="polite">
+                  {typeof selectedPrice === 'number' ? `₹${selectedPrice}` : priceRange}
+                </p>
               </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-[#55705c]">Weekly test</span>
-                <strong className="inline-flex max-w-[65%] items-center gap-1 text-right text-[#3e6927]">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  {weeklyStatus}
-                </strong>
+              {selectedVariant && (
+                <span className="pb-1 text-xs font-semibold text-[#55705c]">
+                  {selectedVariant.label}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <p className="text-xs font-mono font-bold uppercase tracking-wider">
+                Quantity
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <div className="inline-flex min-h-11 items-center border border-[#183b2b]/20 bg-[#f4f0e7]">
+                  <button
+                    type="button"
+                    onClick={() => setQuantityKg((current) => Math.max(10, current - 10))}
+                    disabled={!isAvailable || quantityKg <= 10}
+                    aria-label="Decrease quantity by 10 kilograms"
+                    className="inline-flex h-11 w-11 items-center justify-center text-[#183b2b] hover:bg-[#e9e3d5] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Minus className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <output
+                    aria-live="polite"
+                    className="min-w-20 px-3 text-center font-mono text-sm font-bold"
+                  >
+                    {quantityKg} kg
+                  </output>
+                  <button
+                    type="button"
+                    onClick={() => setQuantityKg((current) => current + 10)}
+                    disabled={!isAvailable}
+                    aria-label="Increase quantity by 10 kilograms"
+                    className="inline-flex h-11 w-11 items-center justify-center text-[#183b2b] hover:bg-[#e9e3d5] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+                {currentQuantity > 0 && (
+                  <span className="text-right text-xs text-[#55705c]">
+                    {currentQuantity}kg already selected
+                  </span>
+                )}
               </div>
             </div>
 
-            {product.highlights?.length > 0 && (
-              <section className="mt-6" aria-labelledby="product-highlights-heading">
-                <h2 id="product-highlights-heading" className="text-xs font-mono font-bold uppercase tracking-wider">
-                  Product highlights
+            <button
+              type="button"
+              onClick={() => onAdd(quantityKg)}
+              disabled={!isAvailable}
+              className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 bg-[#183b2b] px-5 py-3 text-sm font-bold text-[#c9dc74] transition-colors hover:bg-[#25543e] disabled:cursor-not-allowed disabled:bg-[#183b2b]/35 disabled:text-[#f4f0e7]"
+            >
+              <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+              {isAvailable ? `Add ${quantityKg}kg to inquiry` : 'Out of Stock'}
+            </button>
+          </article>
+        </div>
+
+        {(product.description?.trim() ||
+          highlights.length > 0 ||
+          transparencyDetails.length > 0) && (
+          <div className="mt-12 grid gap-8 border-t border-[#183b2b]/15 pt-10 lg:grid-cols-3">
+            {product.description?.trim() && (
+              <section
+                className="lg:col-span-2"
+                aria-labelledby="about-product-heading"
+              >
+                <p className="eyebrow mb-3">Product details</p>
+                <h2
+                  id="about-product-heading"
+                  className="font-serif !text-3xl !leading-tight font-bold"
+                >
+                  About this product
                 </h2>
-                <ul className="mt-3 grid gap-2">
-                  {product.highlights.map((highlight) => (
-                    <li key={highlight} className="flex items-start gap-2 text-sm text-[#55705c]">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#79966e]" />
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-[#55705c]">
+                  {product.description}
+                </p>
+              </section>
+            )}
+
+            {highlights.length > 0 && (
+              <section aria-labelledby="product-highlights-heading">
+                <h2
+                  id="product-highlights-heading"
+                  className="font-serif !text-2xl !leading-tight font-bold"
+                >
+                  Key highlights
+                </h2>
+                <ul className="mt-4 grid gap-3">
+                  {highlights.map((highlight) => (
+                    <li
+                      key={highlight}
+                      className="flex items-start gap-2 text-sm leading-6 text-[#55705c]"
+                    >
+                      <CheckCircle2
+                        className="mt-1 h-4 w-4 shrink-0 text-[#79966e]"
+                        aria-hidden="true"
+                      />
                       {highlight}
                     </li>
                   ))}
@@ -240,42 +477,73 @@ export function ProductDetailPage({
               </section>
             )}
 
-            {product.variants?.length > 0 && (
-              <section className="mt-6" aria-labelledby="available-packs-heading">
-                <h2 id="available-packs-heading" className="text-xs font-mono font-bold uppercase tracking-wider">
-                  Available packs
+            {transparencyDetails.length > 0 && (
+              <section
+                className="border-t border-[#183b2b]/15 pt-8 lg:col-span-3"
+                aria-labelledby="product-transparency-heading"
+              >
+                <h2
+                  id="product-transparency-heading"
+                  className="font-serif !text-2xl !leading-tight font-bold"
+                >
+                  Sourcing &amp; transparency
                 </h2>
-                <div className="mt-3 grid gap-2">
-                  {product.variants.map((variant) => (
+                <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {transparencyDetails.map((detail) => (
                     <div
-                      key={variant.id}
-                      className="flex items-center justify-between border border-[#183b2b]/15 bg-white px-3 py-2.5 text-xs"
+                      key={`${detail.label}-${detail.value}`}
+                      className="border border-[#183b2b]/15 bg-white p-4"
                     >
-                      <span>
-                        <strong>{variant.label}</strong>
-                        {variant.sourcingTier ? (
-                          <span className="ml-2 text-[#55705c]">{variant.sourcingTier}</span>
-                        ) : null}
-                      </span>
-                      <span className="font-mono font-bold">
-                        ₹{variant.sellingPrice ?? variant.price ?? 0}
-                      </span>
+                      <dt className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#79966e]">
+                        {detail.label}
+                      </dt>
+                      <dd className="mt-2 text-sm leading-6 text-[#183b2b]">
+                        {detail.value}
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </section>
             )}
+          </div>
+        )}
 
-            <button
-              type="button"
-              onClick={onAdd}
-              className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 bg-[#183b2b] px-5 py-3 text-sm font-bold text-[#c9dc74] transition-colors hover:bg-[#25543e]"
+        {relatedProducts.length > 0 && (
+          <section
+            className="mt-14 border-t border-[#183b2b]/15 pt-10"
+            aria-labelledby="related-products-heading"
+          >
+            <p className="eyebrow mb-3">More from this category</p>
+            <h2
+              id="related-products-heading"
+              className="font-serif !text-3xl !leading-tight font-bold"
             >
-              <ShoppingCart className="h-4 w-4" />
-              Add 10kg to inquiry {currentQuantity > 0 ? `(${currentQuantity}kg selected)` : ''}
-            </button>
-          </article>
-        </div>
+              Related Products
+            </h2>
+            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {relatedProducts.map((relatedProduct) => {
+                const relatedHref = `/produce/${encodeURIComponent(
+                  relatedProduct.slug
+                )}`;
+
+                return (
+                  <ProductCard
+                    key={relatedProduct.id}
+                    product={relatedProduct}
+                    productHref={relatedHref}
+                    priceRange={getPriceRange(relatedProduct)}
+                    farmSource={getFarmSource(relatedProduct)}
+                    weeklyStatus={getWeeklyStatus(relatedProduct)}
+                    description={getDescription(relatedProduct)}
+                    currentQuantity={quantities[relatedProduct.id] || 0}
+                    onOpen={() => onNavigate(relatedHref)}
+                    onAdd={() => onAddProduct(relatedProduct)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

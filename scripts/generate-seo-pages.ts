@@ -5,6 +5,7 @@ import {
   createCategorySchemas,
   createOrganizationSchemas,
   createProductSchemas,
+  createShopSchemas,
   DEFAULT_SOCIAL_IMAGE,
   SITE_NAME,
   SITE_URL,
@@ -190,9 +191,20 @@ async function generate() {
     await writeHtmlPage(`produce/${product.slug}`, html);
   }
 
+  const shopHtml = injectSeo(template, {
+    title: 'Produce Catalogue',
+    description:
+      'Explore active, traceable produce from trusted farms, with transparent sourcing and dependable delivery for Bengaluru professional kitchens.',
+    canonicalUrl: `${SITE_URL}/shop`,
+    image: products.find((product) => product.images?.[0])?.images[0] || DEFAULT_SOCIAL_IMAGE,
+    type: 'website',
+    schemas: createShopSchemas(products),
+  });
+  await writeHtmlPage('shop', shopHtml);
+
   for (const category of Object.values(CATEGORY_SEO_CONTENT)) {
     const categoryProducts = products.filter((product) => product.category === category.name);
-    const canonicalUrl = `${SITE_URL}/produce/category/${category.slug}`;
+    const canonicalUrl = `${SITE_URL}/${category.slug}`;
     const html = injectSeo(template, {
       title: category.title,
       description: category.description,
@@ -203,12 +215,12 @@ async function generate() {
       type: 'website',
       schemas: createCategorySchemas(category, categoryProducts),
     });
-    await writeHtmlPage(`produce/category/${category.slug}`, html);
+    await writeHtmlPage(category.slug, html);
   }
 
-  const staticUrls = ['/', '/about.html', '/faq.html', '/blog.html', '/privacy.html', '/terms.html'];
+  const staticUrls = ['/', '/shop', '/about.html', '/faq.html', '/blog.html', '/privacy.html', '/terms.html'];
   const categoryUrls = Object.values(CATEGORY_SEO_CONTENT).map(
-    (category) => `/produce/category/${category.slug}`
+    (category) => `/${category.slug}`
   );
   const productUrls = products.map((product) => `/produce/${encodeURIComponent(product.slug)}`);
   const sitemapEntries = [...staticUrls, ...categoryUrls, ...productUrls]

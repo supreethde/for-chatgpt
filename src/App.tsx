@@ -29,8 +29,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleAuthProvider } from './lib/firebase-auth';
 import { CatalogProduct } from './types';
-import { CataloguePersonalization } from './features/personalization/CataloguePersonalization';
-import { rankCatalogueProducts } from './features/personalization/ranking';
 import {
   CataloguePreferences,
   CataloguePreferencesInput,
@@ -40,9 +38,8 @@ import {
   SavedDeliveryLocation,
 } from './features/delivery/DeliveryLocationModal';
 import { DeliveryServiceStatus } from './features/delivery/serviceArea';
-import { ProductCard } from './features/products/ProductCard';
 import { ProductDetailPage } from './features/products/ProductDetailPage';
-import { CategoryPage } from './features/seo/CategoryPage';
+import { CataloguePage } from './features/catalogue/CataloguePage';
 import { SeoHead } from './features/seo/SeoHead';
 import { createFaqSchema, FAQ_ITEMS } from './features/seo/faq';
 import {
@@ -140,6 +137,13 @@ const categoryCards = [
   { id: 'exotics', name: 'Exotics', image: '/exotics-1.webp', bgClass: 'circle-bg-6' },
 ];
 
+const cataloguePaths = new Set([
+  '/shop',
+  ...categoryCards.map((category) => `/${category.id}`),
+]);
+
+const isCataloguePath = (path: string) => cataloguePaths.has(path);
+
 const faqData = FAQ_ITEMS;
 
 const HOME_SCHEMAS = [
@@ -192,20 +196,22 @@ export default function App() {
 
   // Workspace Tabs State
   const [activeTab, setActiveTab] = useState<'catalog' | 'reports' | 'estimator' | 'inquiries'>('catalog');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All Products');
   const [searchQuery, setSearchQuery] = useState<string>(
     () => new URLSearchParams(window.location.search).get('search') || ''
   );
 
-  // Handle header search typing with smooth scroll to catalogue
+  // Keep catalogue searches within dedicated shopping routes.
   const handleHeaderSearch = (val: string) => {
     setSearchQuery(val);
-    if (val.trim().length > 0) {
-      setActiveTab('catalog');
-      const el = document.getElementById('catalog-workspace') || document.getElementById('produce');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
+    const trimmedValue = val.trim();
+    if (isCataloguePath(currentPath)) {
+      const nextUrl = trimmedValue
+        ? `${currentPath}?search=${encodeURIComponent(trimmedValue)}`
+        : currentPath;
+      window.history.replaceState({}, '', nextUrl);
+    } else if (trimmedValue.length > 0) {
+      navigateTo(`/shop?search=${encodeURIComponent(trimmedValue)}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -213,6 +219,7 @@ export default function App() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const productsLoadStartedRef = useRef(false);
   const [cataloguePreferences, setCataloguePreferences] = useState<CataloguePreferences | null>(null);
   const [personalizationLoading, setPersonalizationLoading] = useState<boolean>(true);
   const [personalizationSaving, setPersonalizationSaving] = useState<boolean>(false);
@@ -307,6 +314,7 @@ export default function App() {
   useEffect(() => {
     const handleLocationChange = () => {
       setCurrentPath(getNormalizedPath());
+      setSearchQuery(new URLSearchParams(window.location.search).get('search') || '');
     };
 
     window.addEventListener('popstate', handleLocationChange);
@@ -551,13 +559,25 @@ export default function App() {
     } catch (e) {
       console.warn('pushState error:', e);
     }
-    const cleanPath = path.toLowerCase().split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
-    const norm = getNormalizedPath();
-    if (norm === '/' && cleanPath !== '/') {
-      setCurrentPath(cleanPath);
-    } else {
-      setCurrentPath(norm);
+    const cleanPath =
+      path.toLowerCase().split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+    const searchValue = new URL(path, window.location.origin).searchParams.get('search');
+    if (searchValue !== null) {
+      setSearchQuery(searchValue);
     }
+    setCurrentPath(cleanPath);
+    setIsMobileMenuOpen(false);
+    setIsCartOpen(false);
+    setIsProfileOpen(false);
+  };
+
+  const navigateToHomeSection = (sectionId: string) => {
+    if (currentPath !== '/') {
+      navigateTo(`/#${sectionId}`);
+    }
+    window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
   };
 
   // Sync session with Express backend
@@ -703,6 +723,8 @@ export default function App() {
   };
 
   const loadProductsFromFirestore = async () => {
+    if (productsLoadStartedRef.current) return;
+    productsLoadStartedRef.current = true;
     setProductsLoading(true);
     setProductsError(null);
     try {
@@ -711,6 +733,7 @@ export default function App() {
       console.log(`[Produce Catalog] Loaded ${data.length} products from Firestore collection "products".`);
       setProducts(data);
     } catch (err: any) {
+      productsLoadStartedRef.current = false;
       console.error('[Produce Catalog Error] Failed to load products from Firestore "products" collection:', err);
       let errorMsg = 'Unable to connect to produce catalog database. Please check your network or try refreshing.';
       if (err instanceof Error && err.message) {
@@ -731,7 +754,9 @@ export default function App() {
   useEffect(() => {
     let productsObserver: IntersectionObserver | null = null;
     const shouldLoadProductsImmediately =
-      currentPath.startsWith('/produce/') || searchQuery.trim().length > 0;
+      currentPath.startsWith('/produce/') ||
+      isCataloguePath(currentPath) ||
+      searchQuery.trim().length > 0;
     const catalogue = document.getElementById('catalog-workspace');
 
     if (
@@ -840,6 +865,12 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isCataloguePath(currentPath)) {
+      void loadProductsFromFirestore();
+    }
+  }, [currentPath]);
+
   // Calculate dynamic weekly estimate
   const getEstimatedTotal = () => {
     let total = 0;
@@ -942,46 +973,13 @@ export default function App() {
   };
 
   const normalizedPath = currentPath;
-
-  const categoryPathMatch = normalizedPath.match(/^\/produce\/category\/([^/]+)$/);
-  if (categoryPathMatch) {
-    const category = CATEGORY_SEO_CONTENT[decodeURIComponent(categoryPathMatch[1])];
-    if (category) {
-      const categoryProducts = products.filter((product) => {
-        const activeState = product.isActive ?? (product as any).active ?? true;
-        return activeState !== false && product.category === category.name;
-      });
-
-      return (
-        <CategoryPage
-          category={category}
-          products={categoryProducts}
-          isLoading={productsLoading}
-          quantities={estimateQuantities}
-          getPriceRange={getProductPriceRange}
-          getFarmSource={getProductFarmSource}
-          getWeeklyStatus={getProductWeeklyTestStatus}
-          getDescription={getProductDescription}
-          onBack={() => {
-            navigateTo('/');
-            window.setTimeout(() => {
-              document.getElementById('catalog-workspace')?.scrollIntoView({ behavior: 'smooth' });
-            }, 0);
-          }}
-          onNavigate={(path) => {
-            navigateTo(path);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          onAdd={(product) => {
-            setEstimateQuantities((current) => ({
-              ...current,
-              [product.id]: (current[product.id] || 0) + 10,
-            }));
-          }}
-        />
-      );
-    }
-  }
+  const legacyCategoryPathMatch = normalizedPath.match(/^\/produce\/category\/([^/]+)$/);
+  const categorySlug = legacyCategoryPathMatch
+    ? decodeURIComponent(legacyCategoryPathMatch[1])
+    : normalizedPath.slice(1);
+  const catalogueCategory =
+    normalizedPath !== '/shop' ? CATEGORY_SEO_CONTENT[categorySlug] : undefined;
+  const isCatalogueRoute = normalizedPath === '/shop' || Boolean(catalogueCategory);
 
   const productPathMatch = normalizedPath.match(/^\/produce\/([^/]+)$/);
   if (productPathMatch) {
@@ -994,20 +992,32 @@ export default function App() {
         product={product}
         isLoading={productsLoading}
         priceRange={product ? getProductPriceRange(product) : ''}
-        farmSource={product ? getProductFarmSource(product) : ''}
-        weeklyStatus={product ? getProductWeeklyTestStatus(product) : ''}
         currentQuantity={productQuantity}
+        products={products}
+        quantities={estimateQuantities}
+        getPriceRange={getProductPriceRange}
+        getFarmSource={getProductFarmSource}
+        getWeeklyStatus={getProductWeeklyTestStatus}
+        getDescription={getProductDescription}
         onBack={() => {
-          navigateTo('/');
-          window.setTimeout(() => {
-            document.getElementById('catalog-workspace')?.scrollIntoView({ behavior: 'smooth' });
-          }, 0);
+          navigateTo('/shop');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        onAdd={() => {
+        onNavigate={(path) => {
+          navigateTo(path);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onAdd={(quantityKg) => {
           if (!product) return;
           setEstimateQuantities((current) => ({
             ...current,
-            [product.id]: (current[product.id] || 0) + 10,
+            [product.id]: (current[product.id] || 0) + quantityKg,
+          }));
+        }}
+        onAddProduct={(relatedProduct) => {
+          setEstimateQuantities((current) => ({
+            ...current,
+            [relatedProduct.id]: (current[relatedProduct.id] || 0) + 10,
           }));
         }}
       />
@@ -1016,19 +1026,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4f0e7] text-[#183b2b] flex flex-col font-sans selection:bg-[#c9dc74] selection:text-[#183b2b]">
-      <SeoHead
-        title="Organic Produce Supply for Bengaluru Restaurants"
-        description="The Soil Theory supplies traceable organic and pesticide-free fruits, vegetables, leafy greens, mushrooms and specialty produce to Bengaluru professional kitchens."
-        canonicalPath="/"
-        image={DEFAULT_SOCIAL_IMAGE}
-        schemas={HOME_SCHEMAS}
-      />
+      {!isCatalogueRoute && (
+        <SeoHead
+          title="Organic Produce Supply for Bengaluru Restaurants"
+          description="The Soil Theory supplies traceable organic and pesticide-free fruits, vegetables, leafy greens, mushrooms and specialty produce to Bengaluru professional kitchens."
+          canonicalPath="/"
+          image={DEFAULT_SOCIAL_IMAGE}
+          schemas={HOME_SCHEMAS}
+        />
+      )}
       
       {/* 1. Announcement Bar */}
       <div className="announcement">
         <span className="dot"></span> 
         <span>Now partnering with Bengaluru restaurants</span> 
-        <a href="#contact">Enquire today</a>
+        <a
+          href="/#contact"
+          onClick={(event) => {
+            event.preventDefault();
+            navigateToHomeSection('contact');
+          }}
+        >
+          Enquire today
+        </a>
       </div>
 
       {/* Auth Error Modal */}
@@ -1116,7 +1136,15 @@ export default function App() {
               <span></span>
             </button>
 
-            <a className="wordmark" href="/">
+            <a
+              className="wordmark"
+              href="/"
+              onClick={(event) => {
+                event.preventDefault();
+                navigateTo('/');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
               <span>THE SOIL</span>
               <strong>THEORY</strong>
               <i></i>
@@ -1157,7 +1185,7 @@ export default function App() {
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => handleHeaderSearch('')}
                   className="clear-search-btn"
                   aria-label="Clear search"
                 >
@@ -1171,9 +1199,33 @@ export default function App() {
           <div className="header-right-group">
             {/* Inline Desktop Nav Links */}
             <nav className="header-inline-nav hidden xl:flex" aria-label="Main Navigation">
-              <a href="#why">Why Soil Theory</a>
-              <a href="#sourcing">How it works</a>
-              <a href="#faq">FAQ</a>
+              <a
+                href="/#why"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateToHomeSection('why');
+                }}
+              >
+                Why Soil Theory
+              </a>
+              <a
+                href="/#sourcing"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateToHomeSection('sourcing');
+                }}
+              >
+                How it works
+              </a>
+              <a
+                href="/#faq"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateToHomeSection('faq');
+                }}
+              >
+                FAQ
+              </a>
             </nav>
 
             <div className="header-actions">
@@ -1246,10 +1298,12 @@ export default function App() {
                     )}
                     {canSendCartInquiry ? (
                       <a
-                        href="#contact"
-                        onClick={() => {
+                        href="/#contact"
+                        onClick={(event) => {
+                          event.preventDefault();
                           setIsCartOpen(false);
                           setActiveTab('inquiries');
+                          navigateToHomeSection('contact');
                         }}
                         className="button button-dark cart-checkout-btn"
                       >
@@ -1315,8 +1369,7 @@ export default function App() {
                           onClick={() => {
                             setIsProfileOpen(false);
                             setActiveTab('inquiries');
-                            const el = document.getElementById('catalog-workspace');
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            navigateToHomeSection('catalog-workspace');
                           }} 
                           className="profile-menu-item w-full text-left"
                         >
@@ -1327,8 +1380,7 @@ export default function App() {
                           onClick={() => {
                             setIsProfileOpen(false);
                             setActiveTab('reports');
-                            const el = document.getElementById('catalog-workspace');
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            navigateToHomeSection('catalog-workspace');
                           }} 
                           className="profile-menu-item w-full text-left"
                         >
@@ -1336,8 +1388,12 @@ export default function App() {
                           Lab Test Reports & Quality
                         </button>
                         <a
-                          href="#contact"
-                          onClick={() => setIsProfileOpen(false)}
+                          href="/#contact"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setIsProfileOpen(false);
+                            navigateToHomeSection('contact');
+                          }}
                           className="profile-menu-item w-full text-left flex items-center gap-2"
                         >
                           <MessageSquare className="w-4 h-4 text-[#183b2b]" />
@@ -1379,8 +1435,12 @@ export default function App() {
                           Partner Sign-In
                         </button>
                         <a
-                          href="#contact"
-                          onClick={() => setIsProfileOpen(false)}
+                          href="/#contact"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setIsProfileOpen(false);
+                            navigateToHomeSection('contact');
+                          }}
                           className="profile-menu-item w-full text-left flex items-center gap-2"
                         >
                           <MessageSquare className="w-4 h-4 text-[#183b2b]" />
@@ -1448,7 +1508,7 @@ export default function App() {
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={() => handleHeaderSearch('')}
                 className="clear-search-btn"
                 aria-label="Clear search"
               >
@@ -1487,7 +1547,11 @@ export default function App() {
                   <a 
                     className="wordmark" 
                     href="/" 
-                    onClick={() => setIsMobileMenuOpen(false)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateTo('/');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
                   >
                     <span>THE SOIL</span>
                     <strong>THEORY</strong>
@@ -1505,22 +1569,31 @@ export default function App() {
 
                 <div className="flex flex-col gap-1">
                   <a
-                    href="#why"
-                    onClick={() => setIsMobileMenuOpen(false)}
+                    href="/#why"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToHomeSection('why');
+                    }}
                     className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
                   >
                     Why Soil Theory
                   </a>
                   <a
-                    href="#sourcing"
-                    onClick={() => setIsMobileMenuOpen(false)}
+                    href="/#sourcing"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToHomeSection('sourcing');
+                    }}
                     className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
                   >
                     How it works
                   </a>
                   <a
-                    href="#faq"
-                    onClick={() => setIsMobileMenuOpen(false)}
+                    href="/#faq"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToHomeSection('faq');
+                    }}
                     className="px-4 py-3 text-[#183b2b] font-medium text-base rounded-xl hover:bg-[#183b2b]/10 transition-colors min-h-[44px] flex items-center"
                   >
                     FAQ
@@ -1530,8 +1603,11 @@ export default function App() {
 
               <div className="pt-6 border-t border-[#183b2b]/15 flex flex-col gap-3">
                 <a
-                  href="#contact"
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  href="/#contact"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigateToHomeSection('contact');
+                  }}
                   className="w-full bg-[#183b2b] text-[#f4f0e7] font-semibold text-center py-3.5 px-5 rounded-xl text-sm transition-all hover:bg-[#25543e] active:scale-[0.98] min-h-[44px] flex items-center justify-center gap-2 shadow-sm"
                 >
                   Talk to us <span>↗</span>
@@ -1542,6 +1618,41 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {isCatalogueRoute ? (
+        <CataloguePage
+          category={catalogueCategory}
+          products={products}
+          isLoading={productsLoading}
+          error={productsError}
+          searchQuery={searchQuery}
+          quantities={estimateQuantities}
+          preferences={cataloguePreferences}
+          isAuthenticated={Boolean(auth.currentUser)}
+          personalizationLoading={personalizationLoading}
+          personalizationSaving={personalizationSaving}
+          personalizationError={personalizationError}
+          getPriceRange={getProductPriceRange}
+          getFarmSource={getProductFarmSource}
+          getWeeklyStatus={getProductWeeklyTestStatus}
+          getDescription={getProductDescription}
+          onSearchChange={handleHeaderSearch}
+          onNavigate={(path) => {
+            navigateTo(path);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onAdd={(product) => {
+            setEstimateQuantities((current) => ({
+              ...current,
+              [product.id]: (current[product.id] || 0) + 10,
+            }));
+            setIsCartOpen(true);
+          }}
+          onRetry={loadProductsFromFirestore}
+          onSignIn={handleLogin}
+          onSavePreferences={handleSaveCataloguePreferences}
+          onDisablePreferences={handleDisableCataloguePreferences}
+        />
+      ) : (
       <main id="top" className="w-full max-w-full overflow-x-hidden">
         {/* 3. Moving Banners & Category Circles Section */}
         <section className="moving-banners-section" id="produce">
@@ -1557,17 +1668,15 @@ export default function App() {
               {categoryCards.map((cat) => (
                 <a
                   key={cat.id}
-                  href={`/produce/category/${cat.id}`}
+                  href={`/${cat.id}`}
                   onClick={(event) => {
                     event.preventDefault();
-                    setSelectedCategory(cat.name);
-                    setActiveTab('catalog');
-                    const el = document.getElementById('catalog-workspace');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    navigateTo(`/${cat.id}`);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className="category-circle-item"
                 >
-                  <div className={`circle-img-wrapper ${cat.bgClass} ${selectedCategory === cat.name ? 'ring-2 ring-[#183b2b]' : ''}`}>
+                  <div className={`circle-img-wrapper ${cat.bgClass}`}>
                     <img
                       src={cat.image}
                       alt={cat.name}
@@ -1579,7 +1688,7 @@ export default function App() {
                       style={{ objectFit: 'cover', objectPosition: 'center', width: '100%', height: '100%' }}
                     />
                   </div>
-                  <span className={`circle-label ${selectedCategory === cat.name ? 'underline font-bold' : ''}`}>
+                  <span className="circle-label">
                     {cat.name}
                   </span>
                 </a>
@@ -1770,32 +1879,25 @@ export default function App() {
           </ol>
         </section>
 
-        {/* 8. Interactive Produce Catalog & Workspace Area */}
+        {/* 8. Partner Workspace Area */}
         <section id="catalog-workspace" className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 box-border overflow-hidden">
-          <CataloguePersonalization
-            preferences={cataloguePreferences}
-            isAuthenticated={Boolean(auth.currentUser)}
-            isLoading={personalizationLoading}
-            isSaving={personalizationSaving}
-            error={personalizationError}
-            onSignIn={handleLogin}
-            onSave={handleSaveCataloguePreferences}
-            onDisable={handleDisableCataloguePreferences}
-          />
-          
           {/* Workspace Tabs Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[#183b2b]/20 mb-8 w-full max-w-full min-w-0">
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab('catalog')}
+              <a
+                href="/shop"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateTo('/shop');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className={`px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   activeTab === 'catalog' ? 'bg-[#183b2b] text-[#c9dc74] shadow-md' : 'bg-white/60 text-[#183b2b] hover:bg-white'
                 }`}
               >
                 <Sprout className="w-4 h-4 inline-block mr-2" />
                 Produce Catalog
-              </button>
+              </a>
               <button
                 type="button"
                 onClick={() => setActiveTab('reports')}
@@ -1833,208 +1935,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* Catalog Search Bar */}
-            {activeTab === 'catalog' && (
-              <div className="relative w-full sm:w-72">
-                <Search className="w-4 h-4 text-[#79966e] absolute left-3 top-1/2 -translate-y-1/2" />
-                <input 
-                  type="text" 
-                  placeholder="Search produce or farm..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-[#183b2b]/20 text-[#183b2b] pl-9 pr-8 py-2 text-xs focus:outline-none focus:border-[#183b2b]"
-                />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')} 
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#79966e] hover:text-[#183b2b] font-bold cursor-pointer"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           <AnimatePresence mode="wait">
             
-            {/* View 1: Produce Catalog */}
-            {activeTab === 'catalog' && (
-              <motion.div
-                key="catalog-view"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-6"
-              >
-                {/* Filter Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none w-full max-w-full min-w-0">
-                  {['All Products', 'Vegetables', 'Fruits', 'Leafy Greens', 'Microgreens', 'Mushrooms', 'Exotics'].map((catName) => (
-                    <a
-                      key={catName}
-                      href={
-                        catName === 'All Products'
-                          ? '#catalog-workspace'
-                          : `/produce/category/${catName.toLowerCase().replace(/\s+/g, '-')}`
-                      }
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setSelectedCategory(catName);
-                      }}
-                      className={`px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                        selectedCategory === catName
-                          ? 'bg-[#183b2b] text-[#c9dc74]'
-                          : 'bg-white border border-[#e9e3d5] text-[#183b2b] hover:bg-[#e9e3d5]/50'
-                      }`}
-                    >
-                      {catName}
-                    </a>
-                  ))}
-                  {selectedCategory !== 'All Products' && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCategory('All Products')}
-                      className="text-xs text-[#f48b4d] underline font-mono hover:text-[#183b2b] ml-2 whitespace-nowrap cursor-pointer"
-                    >
-                      Reset Filter
-                    </button>
-                  )}
-                </div>
-
-                {/* Products Loading / Error / Grid State */}
-                {(() => {
-                  if (productsLoading) {
-                    return (
-                      <div className="bg-white border border-[#e9e3d5] p-12 text-center space-y-3">
-                        <Loader2 className="w-8 h-8 text-[#79966e] animate-spin mx-auto" />
-                        <p className="text-sm text-[#79966e] font-mono">
-                          Loading fresh harvest catalog from Firestore "products" collection...
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  if (productsError) {
-                    return (
-                      <div className="bg-red-50 border border-red-200 text-red-900 p-6 space-y-3">
-                        <div className="flex items-center gap-2 font-bold text-sm">
-                          <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
-                          <span>Unable to load produce catalog from database</span>
-                        </div>
-                        <p className="text-xs font-mono">{productsError}</p>
-                        <button
-                          type="button"
-                          onClick={() => loadProductsFromFirestore()}
-                          className="text-xs bg-red-900 text-white px-4 py-2 font-semibold hover:bg-black transition-all cursor-pointer"
-                        >
-                          Retry Loading Catalog
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  const activeProducts = products.filter(prod => {
-                    const activeState = prod.isActive ?? (prod as any).active ?? true;
-                    return activeState !== false;
-                  });
-
-                  const filteredProducts = activeProducts.filter(prod => {
-                    const catLower = selectedCategory.toLowerCase().trim();
-                    let matchesCategory = true;
-                    if (catLower !== 'all products' && catLower !== 'shop all' && catLower !== 'all') {
-                      const prodCat = (prod.category || '').toLowerCase().trim();
-                      if (catLower === 'vegetables') {
-                        matchesCategory = prodCat.includes('veg');
-                      } else if (catLower === 'fruits') {
-                        matchesCategory = prodCat.includes('fruit');
-                      } else if (catLower === 'leafy greens') {
-                        matchesCategory = prodCat.includes('leaf') || prodCat.includes('green') || prodCat.includes('herb') || prodCat.includes('spinach') || prodCat.includes('lettuce');
-                      } else if (catLower === 'microgreens') {
-                        matchesCategory = prodCat.includes('micro') || prodCat.includes('sprout');
-                      } else if (catLower === 'mushrooms') {
-                        matchesCategory = prodCat.includes('mushroom') || prodCat.includes('fungi');
-                      } else if (catLower === 'exotics') {
-                        matchesCategory = prodCat.includes('exotic') || prodCat.includes('specialty');
-                      } else {
-                        matchesCategory = prodCat.includes(catLower) || catLower.includes(prodCat);
-                      }
-                    }
-
-                    const queryLower = searchQuery.toLowerCase().trim();
-                    const farmSource = getProductFarmSource(prod);
-                    const matchesSearch = !queryLower || 
-                      (prod.name && prod.name.toLowerCase().includes(queryLower)) ||
-                      (prod.description && prod.description.toLowerCase().includes(queryLower)) ||
-                      (prod.shortIntro && prod.shortIntro.toLowerCase().includes(queryLower)) ||
-                      (prod.category && prod.category.toLowerCase().includes(queryLower)) ||
-                      farmSource.toLowerCase().includes(queryLower);
-
-                    return matchesCategory && matchesSearch;
-                  });
-
-                  const rankedProducts = rankCatalogueProducts(
-                    filteredProducts,
-                    cataloguePreferences
-                  );
-
-                  if (rankedProducts.length === 0) {
-                    return (
-                      <div className="bg-white border border-[#e9e3d5] p-12 text-center space-y-3">
-                        <Sprout className="w-8 h-8 text-[#79966e]/50 mx-auto" />
-                        <p className="text-sm text-[#79966e] font-medium">
-                          No produce found for "{selectedCategory}" {searchQuery ? `matching "${searchQuery}"` : ''}.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedCategory('All Products'); setSearchQuery(''); }}
-                          className="text-xs bg-[#183b2b] text-[#f4f0e7] px-4 py-2 font-semibold hover:bg-[#79966e] transition-all cursor-pointer"
-                        >
-                          View All Harvest
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {rankedProducts.map((prod) => {
-                        const priceRange = getProductPriceRange(prod);
-                        const farmSource = getProductFarmSource(prod);
-                        const weeklyStatus = getProductWeeklyTestStatus(prod);
-                        const description = getProductDescription(prod);
-                        const currentQty = estimateQuantities[prod.id] || 0;
-
-                        return (
-                          <ProductCard
-                            key={prod.id}
-                            product={prod}
-                            productHref={`/produce/${encodeURIComponent(prod.slug)}`}
-                            priceRange={priceRange}
-                            farmSource={farmSource}
-                            weeklyStatus={weeklyStatus}
-                            description={description}
-                            currentQuantity={currentQty}
-                            onOpen={() => {
-                              navigateTo(`/produce/${encodeURIComponent(prod.slug)}`);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            onAdd={() => {
-                              setEstimateQuantities((current) => ({
-                                ...current,
-                                [prod.id]: (current[prod.id] || 0) + 10,
-                              }));
-                              setIsCartOpen(true);
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </motion.div>
-            )}
-
             {/* View 2: Lab Certifications */}
             {activeTab === 'reports' && (
               <motion.div
@@ -2477,10 +2381,20 @@ export default function App() {
           </div>
         </section>
       </main>
+      )}
 
       {/* 14. Footer & Legal Bar */}
       <footer>
-        <a className="wordmark" href="#top" aria-label="Soil Theory home">
+        <a
+          className="wordmark"
+          href="/"
+          aria-label="Soil Theory home"
+          onClick={(event) => {
+            event.preventDefault();
+            navigateTo('/');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
           <span>THE SOIL</span>
           <strong>THEORY</strong>
           <i></i>

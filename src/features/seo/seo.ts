@@ -18,7 +18,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   vegetables: {
     slug: 'vegetables',
     name: 'Vegetables',
-    title: 'Organic Vegetables for Restaurants in Bengaluru',
+    title: 'Organic Vegetables',
     description:
       'Source traceable organic and pesticide-free vegetables for restaurants, hotels, cafés and professional kitchens across Bengaluru.',
     introduction:
@@ -30,7 +30,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   fruits: {
     slug: 'fruits',
     name: 'Fruits',
-    title: 'Organic Fruits for Hotels, Cafés and Restaurants in Bengaluru',
+    title: 'Organic Fruits',
     description:
       'Discover seasonal, traceable and pesticide-free fruits supplied to Bengaluru restaurants, hotels, cafés and catering teams.',
     introduction:
@@ -42,7 +42,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   'leafy-greens': {
     slug: 'leafy-greens',
     name: 'Leafy Greens',
-    title: 'Organic Leafy Greens for Bengaluru Professional Kitchens',
+    title: 'Organic Leafy Greens',
     description:
       'Shop crisp, traceable leafy greens and salad produce for restaurants, cafés, hotels and cloud kitchens in Bengaluru.',
     introduction:
@@ -54,7 +54,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   mushrooms: {
     slug: 'mushrooms',
     name: 'Mushrooms',
-    title: 'Specialty and Organic Mushrooms for Bengaluru Restaurants',
+    title: 'Organic Mushrooms',
     description:
       'Source fresh specialty mushrooms with transparent cultivation and dependable Bengaluru delivery for chefs and food businesses.',
     introduction:
@@ -66,7 +66,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   microgreens: {
     slug: 'microgreens',
     name: 'Microgreens',
-    title: 'Fresh Microgreens for Chefs and Restaurants in Bengaluru',
+    title: 'Fresh Microgreens',
     description:
       'Buy fresh, chef-ready microgreens for premium plating, salads and high-value menus across Bengaluru.',
     introduction:
@@ -78,7 +78,7 @@ export const CATEGORY_SEO_CONTENT: Record<string, CategorySeoContent> = {
   exotics: {
     slug: 'exotics',
     name: 'Exotics',
-    title: 'Exotic and Specialty Produce for Bengaluru Restaurants',
+    title: 'Exotic and Specialty Produce',
     description:
       'Explore traceable exotic and specialty produce for fine-dining restaurants, hotels and premium kitchens in Bengaluru.',
     introduction:
@@ -149,7 +149,7 @@ export function createOrganizationSchemas() {
       publisher: { '@id': `${SITE_URL}/#organization` },
       potentialAction: {
         '@type': 'SearchAction',
-        target: `${SITE_URL}/?search={search_term_string}#catalog-workspace`,
+        target: `${SITE_URL}/shop?search={search_term_string}`,
         'query-input': 'required name=search_term_string',
       },
     },
@@ -208,13 +208,13 @@ export function createProductSchemas(product: CatalogProduct) {
           '@type': 'ListItem',
           position: 1,
           name: 'Produce Catalogue',
-          item: `${SITE_URL}/#catalog-workspace`,
+          item: `${SITE_URL}/shop`,
         },
         {
           '@type': 'ListItem',
           position: 2,
           name: product.category,
-          item: `${SITE_URL}/produce/category/${getCategorySeoByName(product.category).slug}`,
+          item: `${SITE_URL}/${getCategorySeoByName(product.category).slug}`,
         },
         {
           '@type': 'ListItem',
@@ -231,7 +231,7 @@ export function createCategorySchemas(
   category: CategorySeoContent,
   products: CatalogProduct[]
 ) {
-  const canonicalUrl = `${SITE_URL}/produce/category/${category.slug}`;
+  const canonicalUrl = `${SITE_URL}/${category.slug}`;
 
   return [
     {
@@ -265,12 +265,57 @@ export function createCategorySchemas(
           '@type': 'ListItem',
           position: 1,
           name: 'Produce Catalogue',
-          item: `${SITE_URL}/#catalog-workspace`,
+          item: `${SITE_URL}/shop`,
         },
         {
           '@type': 'ListItem',
           position: 2,
           name: category.name,
+          item: canonicalUrl,
+        },
+      ],
+    },
+  ];
+}
+
+export function createShopSchemas(products: CatalogProduct[]) {
+  const canonicalUrl = `${SITE_URL}/shop`;
+
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      '@id': `${canonicalUrl}#collection`,
+      name: 'Produce Catalogue',
+      description:
+        'Explore active, traceable produce from trusted farms for Bengaluru professional kitchens.',
+      url: canonicalUrl,
+      isPartOf: { '@id': `${SITE_URL}/#website` },
+      mainEntity: {
+        '@type': 'ItemList',
+        numberOfItems: products.length,
+        itemListElement: products.map((product, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          name: product.name,
+          url: `${SITE_URL}/produce/${encodeURIComponent(product.slug)}`,
+        })),
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: SITE_URL,
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Produce Catalogue',
           item: canonicalUrl,
         },
       ],

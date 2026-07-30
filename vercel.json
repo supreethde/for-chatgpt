@@ -4,6 +4,11 @@
       "source": "/products/:slug",
       "destination": "/produce/:slug",
       "permanent": true
+    },
+    {
+      "source": "/produce/category/:slug",
+      "destination": "/:slug",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -20,8 +25,32 @@
       "destination": "/api/gone?slug=:slug"
     },
     {
-      "source": "/produce/category/:slug",
-      "destination": "/produce/category/:slug/index.html"
+      "source": "/shop",
+      "destination": "/shop/index.html"
+    },
+    {
+      "source": "/vegetables",
+      "destination": "/vegetables/index.html"
+    },
+    {
+      "source": "/fruits",
+      "destination": "/fruits/index.html"
+    },
+    {
+      "source": "/leafy-greens",
+      "destination": "/leafy-greens/index.html"
+    },
+    {
+      "source": "/microgreens",
+      "destination": "/microgreens/index.html"
+    },
+    {
+      "source": "/mushrooms",
+      "destination": "/mushrooms/index.html"
+    },
+    {
+      "source": "/exotics",
+      "destination": "/exotics/index.html"
     },
     {
       "source": "/produce/:slug",

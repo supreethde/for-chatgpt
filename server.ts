@@ -266,18 +266,19 @@ async function startServer() {
     });
 
     app.get("/produce/category/:slug", (req, res) => {
-      const filePath = path.join(
-        distPath,
-        "produce",
-        "category",
-        req.params.slug,
-        "index.html"
-      );
+      res.redirect(301, `/${encodeURIComponent(req.params.slug)}`);
+    });
+
+    app.get(
+      ["/shop", "/vegetables", "/fruits", "/leafy-greens", "/microgreens", "/mushrooms", "/exotics"],
+      (req, res) => {
+      const filePath = path.join(distPath, req.path.slice(1), "index.html");
       if (fs.existsSync(filePath)) {
         return res.sendFile(filePath);
       }
       return res.status(404).sendFile(path.join(distPath, "404.html"));
-    });
+      }
+    );
 
     app.get("/produce/:slug", (req, res) => {
       const filePath = path.join(distPath, "produce", req.params.slug, "index.html");

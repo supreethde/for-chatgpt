@@ -1409,6 +1409,38 @@ footer .wordmark i {
   transform: scale(1.04);
 }
 
+.category-product-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#root:has(.catalogue-page) > div {
+  overflow-x: clip;
+}
+
+.category-filter-sidebar h2 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  letter-spacing: normal;
+}
+
+@media(min-width: 768px) {
+  .category-product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media(min-width: 1180px) {
+  .category-product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media(min-width: 1400px) {
+  .category-product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media(max-width: 900px) {
   .hero { grid-template-columns: 1fr; width: 100%; max-width: 100%; overflow: hidden; }
   .hero-art { min-height: 320px; max-height: 420px; grid-row: 1; width: 100%; max-width: 100%; overflow: hidden; }
