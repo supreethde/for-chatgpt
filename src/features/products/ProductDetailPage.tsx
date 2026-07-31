@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Leaf,
   Loader2,
   Minus,
@@ -75,6 +76,17 @@ export function ProductDetailPage({
   const [selectedRangeId, setSelectedRangeId] = useState('');
   const [selectedVariantId, setSelectedVariantId] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [openInfoSections, setOpenInfoSections] = useState({
+    about: true,
+    highlights: false,
+    transparency: false,
+  });
+  const [isMobileInfoLayout, setIsMobileInfoLayout] = useState(() =>
+    window.matchMedia('(max-width: 767px)').matches
+  );
+  const selectedImage = gallery[selectedIndex] || gallery[0];
+  const [primaryImageLoaded, setPrimaryImageLoaded] = useState(false);
+  const [primaryImageFailed, setPrimaryImageFailed] = useState(false);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -82,7 +94,27 @@ export function ProductDetailPage({
     setSelectedRangeId(initialSelection?.qualityRangeId ?? '');
     setSelectedVariantId(initialSelection?.variantId ?? '');
     setQuantity(initialSelection?.quantity ?? 1);
+    setOpenInfoSections({
+      about: true,
+      highlights: false,
+      transparency: false,
+    });
   }, [product?.slug]);
+
+  useEffect(() => {
+    setPrimaryImageLoaded(false);
+    setPrimaryImageFailed(false);
+  }, [selectedImage?.url]);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const updateMobileLayout = () => setIsMobileInfoLayout(mobileQuery.matches);
+
+    updateMobileLayout();
+    mobileQuery.addEventListener('change', updateMobileLayout);
+
+    return () => mobileQuery.removeEventListener('change', updateMobileLayout);
+  }, []);
 
   if (isLoading) {
     return (
@@ -117,7 +149,6 @@ export function ProductDetailPage({
     );
   }
 
-  const selectedImage = gallery[selectedIndex] || gallery[0];
   const qualityRanges = getActiveQualityRanges(product);
   const selectedRange =
     qualityRanges.find((range) => range.id === selectedRangeId) ??
@@ -171,6 +202,14 @@ export function ProductDetailPage({
     setSelectedVariantId(initialVariant?.id ?? '');
     setQuantity(Math.max(1, Math.floor(range.minimumOrderQuantity || 1)));
   };
+  const toggleInfoSection = (
+    section: keyof typeof openInfoSections
+  ) => {
+    setOpenInfoSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f0e7] text-[#183b2b]">
@@ -221,7 +260,19 @@ export function ProductDetailPage({
           <section aria-label={`${product.name} image gallery`}>
             {selectedImage ? (
               <figure className="overflow-hidden border border-[#183b2b]/15 bg-white">
-                <div className="aspect-square bg-[#e9e3d5]/50 p-5">
+                <div className="relative aspect-square bg-[#e9e3d5]/50 p-5">
+                  {!primaryImageLoaded && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 animate-pulse bg-[#e9e3d5]/70 motion-reduce:animate-none"
+                    />
+                  )}
+                  {primaryImageFailed && (
+                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-[#79966e]">
+                      <Leaf className="h-10 w-10" aria-hidden="true" />
+                      <span className="text-xs font-mono">Image coming soon</span>
+                    </span>
+                  )}
                   <img
                     src={selectedImage.url}
                     alt={selectedImage.alt}
@@ -232,7 +283,16 @@ export function ProductDetailPage({
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    className="h-full w-full object-contain"
+                    onLoad={() => setPrimaryImageLoaded(true)}
+                    onError={() => {
+                      setPrimaryImageFailed(true);
+                      setPrimaryImageLoaded(true);
+                    }}
+                    className={`h-full w-full object-contain transition-opacity duration-300 motion-reduce:transition-none ${
+                      primaryImageLoaded && !primaryImageFailed
+                        ? 'opacity-100'
+                        : 'opacity-0'
+                    }`}
                   />
                 </div>
                 <figcaption className="flex items-center justify-between gap-3 border-t border-[#183b2b]/10 px-4 py-3">
@@ -278,6 +338,7 @@ export function ProductDetailPage({
                         height={240}
                         sizes="(max-width: 639px) 22vw, 8rem"
                         loading="lazy"
+                        fetchPriority="low"
                         decoding="async"
                         className="h-full w-full object-contain"
                       />
@@ -529,44 +590,103 @@ export function ProductDetailPage({
           <div className="mt-12 grid gap-8 border-t border-[#183b2b]/15 pt-10 lg:grid-cols-3">
             {product.description?.trim() && (
               <section
-                className="lg:col-span-2"
-                aria-labelledby="about-product-heading"
+                className="border-b border-[#183b2b]/15 pb-4 md:border-0 md:pb-0 lg:col-span-2"
+                aria-label="About this product"
               >
-                <p className="eyebrow mb-3">Product details</p>
+                <button
+                  type="button"
+                  aria-expanded={openInfoSections.about}
+                  aria-controls="about-product-content"
+                  onClick={() => toggleInfoSection('about')}
+                  className="flex min-h-12 w-full items-center justify-between gap-4 text-left font-serif text-xl font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] md:hidden"
+                >
+                  About this product
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${
+                      openInfoSections.about ? 'rotate-180' : ''
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+                <p className="eyebrow mb-3 hidden md:block">Product details</p>
                 <h2
                   id="about-product-heading"
-                  className="font-serif !text-3xl !leading-tight font-bold"
+                  className="hidden font-serif !text-3xl !leading-tight font-bold md:block"
                 >
                   About this product
                 </h2>
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-[#55705c]">
-                  {product.description}
-                </p>
+                <div
+                  id="about-product-content"
+                  aria-hidden={isMobileInfoLayout && !openInfoSections.about}
+                  inert={isMobileInfoLayout && !openInfoSections.about}
+                  className={`grid transition-[grid-template-rows,opacity] duration-200 md:block md:opacity-100 ${
+                    openInfoSections.about
+                      ? 'grid-rows-[1fr] opacity-100'
+                      : 'grid-rows-[0fr] opacity-0'
+                  }`}
+                >
+                  <div className="overflow-hidden md:overflow-visible">
+                    <p className="mt-3 max-w-3xl text-sm leading-7 text-[#55705c] md:mt-4">
+                      {product.description}
+                    </p>
+                  </div>
+                </div>
               </section>
             )}
 
             {highlights.length > 0 && (
-              <section aria-labelledby="product-highlights-heading">
+              <section
+                className="border-b border-[#183b2b]/15 pb-4 md:border-0 md:pb-0"
+                aria-label="Key highlights"
+              >
+                <button
+                  type="button"
+                  aria-expanded={openInfoSections.highlights}
+                  aria-controls="product-highlights-content"
+                  onClick={() => toggleInfoSection('highlights')}
+                  className="flex min-h-12 w-full items-center justify-between gap-4 text-left font-serif text-xl font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] md:hidden"
+                >
+                  Key highlights
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${
+                      openInfoSections.highlights ? 'rotate-180' : ''
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
                 <h2
                   id="product-highlights-heading"
-                  className="font-serif !text-2xl !leading-tight font-bold"
+                  className="hidden font-serif !text-2xl !leading-tight font-bold md:block"
                 >
                   Key highlights
                 </h2>
-                <ul className="mt-4 grid gap-3">
-                  {highlights.map((highlight) => (
-                    <li
-                      key={highlight}
-                      className="flex items-start gap-2 text-sm leading-6 text-[#55705c]"
-                    >
-                      <CheckCircle2
-                        className="mt-1 h-4 w-4 shrink-0 text-[#79966e]"
-                        aria-hidden="true"
-                      />
-                      {highlight}
-                    </li>
-                  ))}
-                </ul>
+                <div
+                  id="product-highlights-content"
+                  aria-hidden={isMobileInfoLayout && !openInfoSections.highlights}
+                  inert={isMobileInfoLayout && !openInfoSections.highlights}
+                  className={`grid transition-[grid-template-rows,opacity] duration-200 md:block md:opacity-100 ${
+                    openInfoSections.highlights
+                      ? 'grid-rows-[1fr] opacity-100'
+                      : 'grid-rows-[0fr] opacity-0'
+                  }`}
+                >
+                  <div className="overflow-hidden md:overflow-visible">
+                    <ul className="mt-3 grid gap-3 md:mt-4">
+                      {highlights.map((highlight) => (
+                        <li
+                          key={highlight}
+                          className="flex items-start gap-2 text-sm leading-6 text-[#55705c]"
+                        >
+                          <CheckCircle2
+                            className="mt-1 h-4 w-4 shrink-0 text-[#79966e]"
+                            aria-hidden="true"
+                          />
+                          {highlight}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </section>
             )}
 
@@ -575,54 +695,82 @@ export function ProductDetailPage({
               selectedRange?.labReportUrl) && (
               <section
                 className="border-t border-[#183b2b]/15 pt-8 lg:col-span-3"
-                aria-labelledby="product-transparency-heading"
+                aria-label="Sourcing and transparency"
               >
+                <button
+                  type="button"
+                  aria-expanded={openInfoSections.transparency}
+                  aria-controls="product-transparency-content"
+                  onClick={() => toggleInfoSection('transparency')}
+                  className="flex min-h-12 w-full items-center justify-between gap-4 text-left font-serif text-xl font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#183b2b] md:hidden"
+                >
+                  Sourcing &amp; transparency
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${
+                      openInfoSections.transparency ? 'rotate-180' : ''
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
                 <h2
                   id="product-transparency-heading"
-                  className="font-serif !text-2xl !leading-tight font-bold"
+                  className="hidden font-serif !text-2xl !leading-tight font-bold md:block"
                 >
                   Sourcing &amp; transparency
                 </h2>
-                <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {transparencyDetails.map((detail) => (
-                    <div
-                      key={`${detail.label}-${detail.value}`}
-                      className="border border-[#183b2b]/15 bg-white p-4"
-                    >
-                      <dt className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#79966e]">
-                        {detail.label}
-                      </dt>
-                      <dd className="mt-2 text-sm leading-6 text-[#183b2b]">
-                        {detail.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                {(selectedRange?.certificationDocumentUrl ||
-                  selectedRange?.labReportUrl) && (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    {selectedRange.certificationDocumentUrl && (
-                      <a
-                        href={selectedRange.certificationDocumentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
-                      >
-                        View certificate
-                      </a>
-                    )}
-                    {selectedRange.labReportUrl && (
-                      <a
-                        href={selectedRange.labReportUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
-                      >
-                        View lab report
-                      </a>
+                <div
+                  id="product-transparency-content"
+                  aria-hidden={isMobileInfoLayout && !openInfoSections.transparency}
+                  inert={isMobileInfoLayout && !openInfoSections.transparency}
+                  className={`grid transition-[grid-template-rows,opacity] duration-200 md:block md:opacity-100 ${
+                    openInfoSections.transparency
+                      ? 'grid-rows-[1fr] opacity-100'
+                      : 'grid-rows-[0fr] opacity-0'
+                  }`}
+                >
+                  <div className="overflow-hidden md:overflow-visible">
+                    <dl className="mt-3 grid gap-4 sm:grid-cols-2 md:mt-4 lg:grid-cols-3">
+                      {transparencyDetails.map((detail) => (
+                        <div
+                          key={`${detail.label}-${detail.value}`}
+                          className="border border-[#183b2b]/15 bg-white p-4"
+                        >
+                          <dt className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#79966e]">
+                            {detail.label}
+                          </dt>
+                          <dd className="mt-2 text-sm leading-6 text-[#183b2b]">
+                            {detail.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {(selectedRange?.certificationDocumentUrl ||
+                      selectedRange?.labReportUrl) && (
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        {selectedRange.certificationDocumentUrl && (
+                          <a
+                            href={selectedRange.certificationDocumentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
+                          >
+                            View certificate
+                          </a>
+                        )}
+                        {selectedRange.labReportUrl && (
+                          <a
+                            href={selectedRange.labReportUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-10 items-center border border-[#183b2b]/20 px-4 py-2 text-xs font-bold text-[#183b2b] hover:border-[#183b2b]"
+                          >
+                            View lab report
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
               </section>
             )}
           </div>
@@ -640,7 +788,7 @@ export function ProductDetailPage({
             >
               Related Products
             </h2>
-            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+            <div className="related-products-grid mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
               {relatedProducts.map((relatedProduct) => {
                 const relatedHref = `/produce/${encodeURIComponent(
                   relatedProduct.slug
@@ -656,6 +804,7 @@ export function ProductDetailPage({
                     weeklyStatus={getWeeklyStatus(relatedProduct)}
                     description={getDescription(relatedProduct)}
                     currentQuantity={quantities[relatedProduct.id] || 0}
+                    imagePriority={false}
                     onOpen={() => onNavigate(relatedHref)}
                     onAdd={() => {
                       const selection = getDefaultProductSelection(relatedProduct);

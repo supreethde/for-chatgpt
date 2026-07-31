@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Leaf } from 'lucide-react';
 import { CatalogProduct } from '../../types';
 import { getProductImageAlt } from './productImages';
 import {
@@ -47,6 +47,7 @@ interface ProductCardProps {
   description: string;
   currentQuantity: number;
   productHref: string;
+  imagePriority?: boolean;
   onOpen: () => void;
   onAdd: () => void;
 }
@@ -57,6 +58,7 @@ export function ProductCard({
   description,
   currentQuantity,
   productHref,
+  imagePriority = false,
   onOpen,
   onAdd,
 }: ProductCardProps) {
@@ -75,6 +77,15 @@ export function ProductCard({
   const [isHovered, setIsHovered] = useState(false);
   const [isPointerInteracting, setIsPointerInteracting] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    window.matchMedia('(max-width: 767px)').matches
+  );
+  const [loadedImageIndexes, setLoadedImageIndexes] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [failedImageIndexes, setFailedImageIndexes] = useState<Set<number>>(
+    () => new Set()
+  );
   const galleryImages = useMemo(
     () => (product.images ?? []).filter((image): image is string => Boolean(image)),
     [product.images]
@@ -97,6 +108,16 @@ export function ProductCard({
     },
     []
   );
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const updateMobileViewport = () => setIsMobileViewport(mobileQuery.matches);
+
+    updateMobileViewport();
+    mobileQuery.addEventListener('change', updateMobileViewport);
+
+    return () => mobileQuery.removeEventListener('change', updateMobileViewport);
+  }, []);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -150,6 +171,8 @@ export function ProductCard({
     setIsFirstImageReady(false);
     setIsHovered(false);
     setIsPointerInteracting(false);
+    setLoadedImageIndexes(new Set());
+    setFailedImageIndexes(new Set());
     initialDelayRemainingRef.current = FIRST_IMAGE_DELAY_MS;
     initialDelayCompletedRef.current = false;
     interactionResumeDelayRef.current = 0;
@@ -251,7 +274,7 @@ export function ProductCard({
   return (
     <article
       ref={cardRef}
-      className="group flex h-full cursor-pointer flex-col border border-[#e9e3d5] bg-white p-5 transition-all hover:shadow-lg"
+      className="product-card group flex h-full min-w-0 cursor-pointer flex-col border border-[#e9e3d5] bg-white p-5 transition-all hover:shadow-lg"
       onClick={() => {
         if (suppressClickRef.current) {
           suppressClickRef.current = false;
@@ -282,7 +305,7 @@ export function ProductCard({
     >
       {galleryImages[0] && (
         <div
-          className="relative mb-4 aspect-square w-full touch-pan-y overflow-hidden rounded-t-xl bg-[#f4f0e7]"
+          className="product-card-image relative mb-4 aspect-square w-full touch-pan-y overflow-hidden rounded-t-xl bg-[#f4f0e7]"
           data-gallery-image-index={activeImageIndex}
           data-gallery-image-count={galleryImages.length}
           onPointerDown={
@@ -305,6 +328,9 @@ export function ProductCard({
         >
           {galleryImages.map((image, index) => {
             const isActive = index === activeImageIndex;
+            const isLoaded = loadedImageIndexes.has(index);
+            const hasFailed = failedImageIndexes.has(index);
+            const shouldPrioritize = imagePriority && isMobileViewport && index === 0;
 
             return (
               <img
@@ -315,40 +341,63 @@ export function ProductCard({
                 aria-hidden={!isActive}
                 width={800}
                 height={800}
-                sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1279px) 50vw, 25vw"
-                loading="lazy"
+                sizes="(max-width: 767px) calc(50vw - 1.5rem), (max-width: 1279px) 50vw, 25vw"
+                loading={shouldPrioritize ? 'eager' : 'lazy'}
+                fetchPriority={shouldPrioritize ? 'high' : 'low'}
                 decoding="async"
-                onLoad={
-                  index === 0
-                    ? () => {
-                        setIsFirstImageReady(true);
-                      }
-                    : undefined
-                }
-                onError={
-                  index === 0
-                    ? () => {
-                        setIsFirstImageReady(true);
-                      }
-                    : undefined
-                }
+                onLoad={() => {
+                  setLoadedImageIndexes((current) => {
+                    if (current.has(index)) return current;
+                    const next = new Set(current);
+                    next.add(index);
+                    return next;
+                  });
+                  if (index === 0) setIsFirstImageReady(true);
+                }}
+                onError={() => {
+                  setFailedImageIndexes((current) => {
+                    if (current.has(index)) return current;
+                    const next = new Set(current);
+                    next.add(index);
+                    return next;
+                  });
+                  setLoadedImageIndexes((current) => {
+                    if (current.has(index)) return current;
+                    const next = new Set(current);
+                    next.add(index);
+                    return next;
+                  });
+                  if (index === 0) setIsFirstImageReady(true);
+                }}
                 className={`pointer-events-none absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] object-contain ease-out ${
                   prefersReducedMotion
                     ? 'transition-none'
                     : 'transition-opacity duration-[600ms]'
-                } ${isActive ? 'opacity-100' : 'opacity-0'}`}
+                } ${isActive && isLoaded && !hasFailed ? 'opacity-100' : 'opacity-0'}`}
               />
             );
           })}
+          {!loadedImageIndexes.has(activeImageIndex) && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 animate-pulse bg-[#e9e3d5]/70 motion-reduce:animate-none"
+            />
+          )}
+          {failedImageIndexes.has(activeImageIndex) && (
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-[#79966e]">
+              <Leaf className="h-7 w-7" aria-hidden="true" />
+              <span className="text-[10px] font-mono">Image coming soon</span>
+            </span>
+          )}
         </div>
       )}
 
-      <div className="flex flex-1 flex-col">
-        <span className="mb-3 inline-flex self-start bg-[#f48b4d]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#f48b4d]">
+      <div className="product-card-body flex min-w-0 flex-1 flex-col">
+        <span className="product-card-category mb-3 inline-flex self-start bg-[#f48b4d]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#f48b4d]">
           {product.category}
         </span>
 
-        <h3 className="min-h-[3.25rem] font-serif text-xl font-bold leading-[1.3]">
+        <h3 className="product-card-title min-h-[3.25rem] font-serif text-xl font-bold leading-[1.3]">
           <a
             href={productHref}
             onClick={(event) => {
@@ -363,34 +412,34 @@ export function ProductCard({
         </h3>
 
         {displayDescription && (
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[#55705c]">
+          <p className="product-card-description mt-2 line-clamp-2 text-xs leading-relaxed text-[#55705c]">
             {displayDescription}
           </p>
         )}
 
         <div
-          className="mt-auto border-t border-[#e9e3d5] pt-4"
+          className="product-card-footer mt-auto border-t border-[#e9e3d5] pt-4"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
-            <span className="font-mono text-base font-bold text-[#183b2b]">{price}</span>
+          <div className="product-card-price-row flex min-w-0 items-baseline gap-2 whitespace-nowrap">
+            <span className="product-card-price font-mono text-base font-bold text-[#183b2b]">{price}</span>
             {packSize && (
               <>
                 <span className="text-xs text-[#79966e]" aria-hidden="true">·</span>
-                <span className="truncate text-xs font-semibold text-[#55705c]">{packSize}</span>
+                <span className="product-card-pack truncate text-xs font-semibold text-[#55705c]">{packSize}</span>
               </>
             )}
           </div>
 
           {rangeSummary && (
-            <span className="mt-3 inline-flex max-w-full items-center gap-1.5 bg-[#79966e]/10 px-2 py-1 text-[11px] font-semibold text-[#3e6927]">
+            <span className="product-card-range mt-3 inline-flex max-w-full items-center gap-1.5 bg-[#79966e]/10 px-2 py-1 text-[11px] font-semibold text-[#3e6927]">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{rangeSummary}</span>
+              <span className="product-card-range-text truncate">{rangeSummary}</span>
             </span>
           )}
 
           <div
-            className={`mt-3 flex items-center gap-2 text-[11px] font-semibold ${
+            className={`product-card-status mt-3 flex items-center gap-2 text-[11px] font-semibold ${
               isAvailable ? 'text-[#3e6927]' : 'text-[#f48b4d]'
             }`}
           >
@@ -407,7 +456,7 @@ export function ProductCard({
             type="button"
             onClick={onAdd}
             disabled={!isAvailable}
-            className="mt-4 inline-flex min-h-9 w-full items-center justify-center bg-[#183b2b] px-3 py-2 text-xs font-bold text-[#c9dc74] transition-colors hover:bg-[#79966e] disabled:cursor-not-allowed disabled:bg-[#183b2b]/35 disabled:text-[#f4f0e7]"
+            className="product-card-add mt-4 inline-flex min-h-9 w-full items-center justify-center bg-[#183b2b] px-3 py-2 text-xs font-bold text-[#c9dc74] transition-colors hover:bg-[#79966e] disabled:cursor-not-allowed disabled:bg-[#183b2b]/35 disabled:text-[#f4f0e7]"
           >
             + Add {currentQuantity > 0 ? `(${currentQuantity})` : ''}
           </button>

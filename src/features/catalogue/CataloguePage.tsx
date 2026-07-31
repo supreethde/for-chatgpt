@@ -141,7 +141,7 @@ function ProductCardSkeleton() {
   return (
     <article
       aria-hidden="true"
-      className="h-full animate-pulse border border-[#e9e3d5] bg-white p-5 motion-reduce:animate-none"
+      className="product-card-skeleton h-full animate-pulse border border-[#e9e3d5] bg-white p-5 motion-reduce:animate-none"
     >
       <div className="aspect-square w-full rounded-t-xl bg-[#e9e3d5]" />
       <div className="mt-4 h-5 w-20 bg-[#f48b4d]/10" />
@@ -584,7 +584,7 @@ export function CataloguePage({
                     className={
                       category
                         ? 'category-product-grid grid gap-5'
-                        : 'grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3'
+                        : 'catalogue-product-grid grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3'
                     }
                   >
                     {Array.from({ length: 6 }, (_, index) => (
@@ -654,10 +654,10 @@ export function CataloguePage({
                   className={
                     category
                       ? 'category-product-grid grid gap-5'
-                      : 'grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3'
+                      : 'catalogue-product-grid grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3'
                   }
                 >
-                  {visibleProducts.map((product) => {
+                  {visibleProducts.map((product, index) => {
                     const productHref = `/produce/${encodeURIComponent(product.slug)}`;
                     return (
                       <ProductCard
@@ -669,6 +669,7 @@ export function CataloguePage({
                         weeklyStatus={getWeeklyStatus(product)}
                         description={getDescription(product)}
                         currentQuantity={quantities[product.id] || 0}
+                        imagePriority={index < 2}
                         onOpen={() => onNavigate(productHref)}
                         onAdd={() => onAdd(product)}
                       />
